@@ -178,3 +178,34 @@ pub struct SubjectDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relation: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct ReadRelationshipsQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RelationshipDto {
+    pub resource_type: String,
+    pub resource_id: String,
+    pub relation: String,
+    pub subject_type: String,
+    pub subject_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_relation: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReadRelationshipsResponse {
+    pub relationships: Vec<RelationshipDto>,
+    pub count: usize,
+}

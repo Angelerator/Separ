@@ -392,6 +392,72 @@ impl SpiceDbClient {
         debug!("Found {} subjects", subjects.len());
         Ok(subjects)
     }
+
+    /// Read relationships matching a filter
+    #[instrument(skip(self))]
+    pub async fn read_relationships(
+        &self,
+        resource_type: Option<&str>,
+        resource_id: Option<&str>,
+        relation: Option<&str>,
+        subject_type: Option<&str>,
+        subject_id: Option<&str>,
+    ) -> Result<Vec<(String, String, String, String, String, Option<String>)>> {
+        debug!(
+            "Reading relationships: resource_type={:?}, resource_id={:?}, relation={:?}",
+            resource_type, resource_id, relation
+        );
+
+        let mut client = self.permissions_client();
+
+        // Build the relationship filter
+        let relationship_filter = proto::RelationshipFilter {
+            resource_type: resource_type.unwrap_or("").to_string(),
+            optional_resource_id: resource_id.unwrap_or("").to_string(),
+            optional_relation: relation.unwrap_or("").to_string(),
+            optional_resource_id_prefix: String::new(),
+            optional_subject_filter: subject_type.map(|st| proto::SubjectFilter {
+                subject_type: st.to_string(),
+                optional_subject_id: subject_id.unwrap_or("").to_string(),
+                optional_relation: None,
+            }),
+        };
+
+        let request = self.create_request(proto::ReadRelationshipsRequest {
+            relationship_filter: Some(relationship_filter),
+            consistency: None,
+            optional_limit: 1000, // Limit to 1000 results
+            optional_cursor: None,
+        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+
+        let mut stream = client.read_relationships(request).await
+            .map_err(|e| SeparError::spicedb_error(format!("Read relationships failed: {}", e)))?
+            .into_inner();
+
+        let mut relationships = Vec::new();
+        while let Some(response) = stream.message().await
+            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))? {
+            if let Some(rel) = response.relationship {
+                let resource = rel.resource.as_ref();
+                let subject = rel.subject.as_ref().and_then(|s| s.object.as_ref());
+                let subject_relation = rel.subject.as_ref().map(|s| s.optional_relation.clone()).filter(|r| !r.is_empty());
+                
+                if let (Some(res), Some(sub)) = (resource, subject) {
+                    relationships.push((
+                        res.object_type.clone(),
+                        res.object_id.clone(),
+                        rel.relation.clone(),
+                        sub.object_type.clone(),
+                        sub.object_id.clone(),
+                        subject_relation,
+                    ));
+                }
+            }
+        }
+
+        debug!("Found {} relationships", relationships.len());
+        Ok(relationships)
+    }
 }
 
 impl std::fmt::Debug for SpiceDbClient {

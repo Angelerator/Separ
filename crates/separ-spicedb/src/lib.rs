@@ -237,6 +237,28 @@ pub mod proto {
     }
 
     #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ReadRelationshipsRequest {
+        #[prost(message, optional, tag = "1")]
+        pub consistency: Option<Consistency>,
+        #[prost(message, optional, tag = "2")]
+        pub relationship_filter: Option<RelationshipFilter>,
+        #[prost(uint32, tag = "3")]
+        pub optional_limit: u32,
+        #[prost(message, optional, tag = "4")]
+        pub optional_cursor: Option<Cursor>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ReadRelationshipsResponse {
+        #[prost(message, optional, tag = "1")]
+        pub read_at: Option<ZedToken>,
+        #[prost(message, optional, tag = "2")]
+        pub relationship: Option<Relationship>,
+        #[prost(message, optional, tag = "3")]
+        pub after_result_cursor: Option<Cursor>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct LookupResourcesRequest {
         #[prost(message, optional, tag = "1")]
         pub consistency: Option<Consistency>,
@@ -451,6 +473,18 @@ pub mod proto {
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
                 let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/LookupSubjects");
+                self.inner.server_streaming(request.into_request(), path, codec).await
+            }
+
+            pub async fn read_relationships(
+                &mut self,
+                request: impl tonic::IntoRequest<super::ReadRelationshipsRequest>,
+            ) -> std::result::Result<tonic::Response<tonic::Streaming<super::ReadRelationshipsResponse>>, tonic::Status> {
+                self.inner.ready().await.map_err(|e| {
+                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                })?;
+                let codec = tonic::codec::ProstCodec::default();
+                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/ReadRelationships");
                 self.inner.server_streaming(request.into_request(), path, codec).await
             }
         }

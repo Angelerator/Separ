@@ -1,7 +1,7 @@
 //! API route definitions
 
 use axum::{
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 
@@ -59,6 +59,7 @@ fn tenant_routes(state: AppState) -> Router {
 fn authz_routes(state: AppState) -> Router {
     Router::new()
         .route("/check", post(handlers::authz::check_permission))
+        .route("/relationships", get(handlers::authz::read_relationships))
         .route("/relationships", post(handlers::authz::write_relationship))
         .route("/relationships", delete(handlers::authz::delete_relationship))
         .route("/lookup/resources", post(handlers::authz::lookup_resources))

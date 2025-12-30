@@ -221,10 +221,38 @@ impl AuthorizationService for SpiceDbAuthorizationService {
     }
 
     #[instrument(skip(self))]
-    async fn read_relationships(&self, _filter: &RelationshipFilter) -> Result<Vec<Relationship>> {
-        // This would use ReadRelationships API - placeholder for now
-        debug!("Reading relationships (not fully implemented)");
-        Ok(vec![])
+    async fn read_relationships(&self, filter: &RelationshipFilter) -> Result<Vec<Relationship>> {
+        debug!("Reading relationships with filter: {:?}", filter);
+
+        let results = self.client.read_relationships(
+            filter.resource_type.as_deref(),
+            filter.resource_id.as_deref(),
+            filter.relation.as_deref(),
+            filter.subject_type.as_deref(),
+            filter.subject_id.as_deref(),
+        ).await?;
+
+        let relationships: Vec<Relationship> = results
+            .into_iter()
+            .map(|(res_type, res_id, relation, sub_type, sub_id, sub_rel)| {
+                Relationship {
+                    resource: Resource {
+                        resource_type: res_type,
+                        id: res_id,
+                    },
+                    relation,
+                    subject: Subject {
+                        subject_type: Self::str_to_subject_type(&sub_type),
+                        id: sub_id,
+                        relation: sub_rel,
+                    },
+                    caveat: None,
+                }
+            })
+            .collect();
+
+        debug!("Found {} relationships", relationships.len());
+        Ok(relationships)
     }
 }
 

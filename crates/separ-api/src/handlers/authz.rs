@@ -1,14 +1,19 @@
 //! Authorization handlers
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
 use tracing::{debug, info};
 
-use separ_core::{AuthorizationService, Relationship, Resource, Subject, SubjectType};
+use separ_core::{AuthorizationService, Relationship, RelationshipFilter, Resource, Subject, SubjectType};
 
 use crate::dto::{
     ApiError, ApiResponse, CheckPermissionRequest, CheckPermissionResponse,
     DeleteRelationshipRequest, LookupResourcesRequest, LookupResourcesResponse,
-    LookupSubjectsRequest, LookupSubjectsResponse, ResourceDto, SubjectDto,
+    LookupSubjectsRequest, LookupSubjectsResponse, ReadRelationshipsQuery,
+    ReadRelationshipsResponse, RelationshipDto, ResourceDto, SubjectDto,
     WriteRelationshipRequest, WriteRelationshipResponse,
 };
 use crate::state::AppState;
@@ -287,6 +292,59 @@ pub async fn lookup_subjects(
                 data: None,
                 error: Some(ApiError {
                     code: "LOOKUP_FAILED".to_string(),
+                    message: e.to_string(),
+                    details: None,
+                }),
+            }),
+        )),
+    }
+}
+
+/// Read relationships (browse permissions)
+pub async fn read_relationships(
+    State(state): State<AppState>,
+    Query(query): Query<ReadRelationshipsQuery>,
+) -> Result<Json<ReadRelationshipsResponse>, (StatusCode, Json<ApiResponse<()>>)> {
+    info!(
+        "Reading relationships with filter: resource_type={:?}, resource_id={:?}, relation={:?}",
+        query.resource_type, query.resource_id, query.relation
+    );
+
+    let filter = RelationshipFilter {
+        resource_type: query.resource_type,
+        resource_id: query.resource_id,
+        relation: query.relation,
+        subject_type: query.subject_type,
+        subject_id: query.subject_id,
+        subject_relation: None,
+    };
+
+    match state.auth_service.read_relationships(&filter).await {
+        Ok(relationships) => {
+            let dtos: Vec<RelationshipDto> = relationships
+                .into_iter()
+                .map(|r| RelationshipDto {
+                    resource_type: r.resource.resource_type,
+                    resource_id: r.resource.id,
+                    relation: r.relation,
+                    subject_type: subject_type_to_string(&r.subject.subject_type),
+                    subject_id: r.subject.id,
+                    subject_relation: r.subject.relation,
+                })
+                .collect();
+            let count = dtos.len();
+            Ok(Json(ReadRelationshipsResponse {
+                relationships: dtos,
+                count,
+            }))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(ApiError {
+                    code: "READ_FAILED".to_string(),
                     message: e.to_string(),
                     details: None,
                 }),
