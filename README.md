@@ -117,6 +117,12 @@ JWT_SECRET=your-jwt-secret
 
 > **Note**: Docker Compose maps PostgreSQL to port **5433** to avoid conflicts with local installations.
 
+> ⚠️ **Security Warning**: The default `supersecretkey` and database credentials are for **development only**. In production, you must:
+> - Generate a strong, random SpiceDB preshared key (min 32 characters)
+> - Use strong PostgreSQL credentials
+> - Set a secure `JWT_SECRET`
+> - Enable TLS for all connections
+
 ## 🔐 SpiceDB Schema
 
 The platform uses a hierarchical schema:
