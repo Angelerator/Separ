@@ -92,24 +92,30 @@
 ### Development Setup
 
 ```bash
-# Start infrastructure
+# Start infrastructure (PostgreSQL + SpiceDB)
 docker-compose up -d
 
-# Run migrations
-cargo run -p separ-server -- migrate
+# Run database migrations
+docker exec -i separ-postgres psql -U separ -d separ < crates/separ-db/migrations/20250101000001_initial_schema.sql
 
 # Start the server
 cargo run -p separ-server
 ```
 
+The server will be available at `http://localhost:8080`.
+
 ### Environment Variables
 
+Configuration is managed via `config/default.toml`. Key settings:
+
 ```env
-DATABASE_URL=postgres://separ:separ@localhost:5432/separ
+DATABASE_URL=postgres://separ:separ@localhost:5433/separ
 SPICEDB_ENDPOINT=http://localhost:50051
-SPICEDB_TOKEN=your-preshared-key
+SPICEDB_TOKEN=supersecretkey
 JWT_SECRET=your-jwt-secret
 ```
+
+> **Note**: Docker Compose maps PostgreSQL to port **5433** to avoid conflicts with local installations.
 
 ## 🔐 SpiceDB Schema
 
@@ -164,28 +170,48 @@ definition resource {
 
 ## 📡 API Endpoints
 
+### Health
+- `GET /health` - Health check
+
 ### Tenant Management
 - `POST /api/v1/tenants` - Create tenant
 - `GET /api/v1/tenants` - List tenants
 - `GET /api/v1/tenants/{id}` - Get tenant
+- `PUT /api/v1/tenants/{id}` - Update tenant
+- `DELETE /api/v1/tenants/{id}` - Delete tenant
 
 ### Authorization
-- `POST /api/v1/check` - Check permission
-- `POST /api/v1/lookup/subjects` - Lookup subjects
-- `POST /api/v1/lookup/resources` - Lookup resources
-- `POST /api/v1/relationships` - Create relationship
-- `DELETE /api/v1/relationships` - Delete relationship
+- `POST /api/v1/authz/check` - Check permission
+- `POST /api/v1/authz/relationships` - Write relationship
+- `DELETE /api/v1/authz/relationships` - Delete relationships
+- `POST /api/v1/authz/lookup/subjects` - Lookup subjects with permission
+- `POST /api/v1/authz/lookup/resources` - Lookup resources user can access
 
-### OAuth/SSO
-- `GET /api/v1/oauth/providers` - List OAuth providers
-- `POST /api/v1/oauth/providers` - Configure OAuth provider
-- `GET /api/v1/oauth/{provider}/authorize` - OAuth authorize
-- `POST /api/v1/oauth/{provider}/callback` - OAuth callback
+### OAuth/SSO (Framework)
+- `GET /api/v1/oauth/{provider}/login` - Initiate OAuth flow
+- `GET /api/v1/oauth/{provider}/callback` - OAuth callback
 
-### Sync (SCIM)
-- `POST /api/v1/scim/Users` - SCIM user provisioning
-- `GET /api/v1/scim/Users` - List SCIM users
-- `POST /api/v1/scim/Groups` - SCIM group provisioning
+### Sync (SCIM - Framework)
+- `POST /api/v1/sync/webhook` - Handle identity provider webhooks
+
+## 🧪 Quick Test
+
+```bash
+# Create a tenant
+curl -X POST http://localhost:8080/api/v1/tenants \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Acme Corp", "slug": "acme"}'
+
+# Add owner permission
+curl -X POST http://localhost:8080/api/v1/authz/relationships \
+  -H "Content-Type: application/json" \
+  -d '{"resource_type": "tenant", "resource_id": "<TENANT_ID>", "relation": "owner", "subject_type": "user", "subject_id": "alice"}'
+
+# Check permission
+curl -X POST http://localhost:8080/api/v1/authz/check \
+  -H "Content-Type: application/json" \
+  -d '{"resource_type": "tenant", "resource_id": "<TENANT_ID>", "permission": "manage", "subject_type": "user", "subject_id": "alice"}'
+```
 
 ## 📄 License
 
