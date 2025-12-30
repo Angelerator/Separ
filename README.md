@@ -182,6 +182,7 @@ definition resource {
 
 ### Authorization
 - `POST /api/v1/authz/check` - Check permission
+- `GET /api/v1/authz/relationships` - Read/browse relationships (requires `resource_type` filter)
 - `POST /api/v1/authz/relationships` - Write relationship
 - `DELETE /api/v1/authz/relationships` - Delete relationships
 - `POST /api/v1/authz/lookup/subjects` - Lookup subjects with permission
@@ -211,6 +212,30 @@ curl -X POST http://localhost:8080/api/v1/authz/relationships \
 curl -X POST http://localhost:8080/api/v1/authz/check \
   -H "Content-Type: application/json" \
   -d '{"resource_type": "tenant", "resource_id": "<TENANT_ID>", "permission": "manage", "subject_type": "user", "subject_id": "alice"}'
+
+# Browse all tenant relationships
+curl "http://localhost:8080/api/v1/authz/relationships?resource_type=tenant" | jq .
+```
+
+## 🔍 Browsing Relationships with Zed CLI
+
+You can also use AuthZed's official CLI to browse and manage relationships:
+
+```bash
+# Install zed CLI
+brew install authzed/tap/zed
+
+# Set up context
+zed context set separ "localhost:50051" "supersecretkey" --insecure
+
+# Read schema
+zed schema read --insecure
+
+# Read all tenant relationships
+zed relationship read tenant --insecure
+
+# Check a permission
+zed permission check tenant:<TENANT_ID> manage user:alice --insecure
 ```
 
 ## 📄 License
