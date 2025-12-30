@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "separ.fullname" . }}-config
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+data:
+  YEKTA__SERVER__HOST: {{ .Values.separ.config.server.host | quote }}
+  YEKTA__SERVER__PORT: {{ .Values.separ.config.server.port | quote }}
+  YEKTA__SPICEDB__ENDPOINT: {{ include "separ.spicedbEndpoint" . | quote }}
+  YEKTA__JWT__ISSUER: {{ .Values.separ.config.jwt.issuer | quote }}
+  YEKTA__JWT__ACCESS_TOKEN_EXPIRY_SECS: {{ .Values.separ.config.jwt.accessTokenExpirySecs | quote }}
+  YEKTA__JWT__REFRESH_TOKEN_EXPIRY_SECS: {{ .Values.separ.config.jwt.refreshTokenExpirySecs | quote }}
+  RUST_LOG: "info,separ=debug"
+

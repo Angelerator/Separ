@@ -1,0 +1,27 @@
+syntax = "proto3";
+package authzed.api.v1;
+
+option go_package = "github.com/authzed/authzed-go/proto/authzed/api/v1";
+
+import "authzed/api/v1/core.proto";
+
+service SchemaService {
+  rpc ReadSchema(ReadSchemaRequest) returns (ReadSchemaResponse);
+  rpc WriteSchema(WriteSchemaRequest) returns (WriteSchemaResponse);
+}
+
+message ReadSchemaRequest {}
+
+message ReadSchemaResponse {
+  string schema_text = 1;
+  ZedToken read_at = 2;
+}
+
+message WriteSchemaRequest {
+  string schema = 1;
+}
+
+message WriteSchemaResponse {
+  ZedToken written_at = 1;
+}
+

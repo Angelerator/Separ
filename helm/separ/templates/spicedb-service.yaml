@@ -1,0 +1,28 @@
+{{- if .Values.spicedb.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "separ.fullname" . }}-spicedb
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spicedb
+spec:
+  type: {{ .Values.spicedb.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.spicedb.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+    - port: {{ .Values.spicedb.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.spicedb.service.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "separ.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: spicedb
+{{- end }}
+

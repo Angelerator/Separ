@@ -1,0 +1,194 @@
+# Yekta Authorization Platform - Helm Values
+
+# =============================================================================
+# Global Configuration
+# =============================================================================
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# =============================================================================
+# Yekta API Server
+# =============================================================================
+separ:
+  replicaCount: 2
+  
+  image:
+    repository: separ/separ
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8080
+  
+  ingress:
+    enabled: false
+    className: nginx
+    annotations: {}
+    hosts:
+      - host: separ.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  config:
+    server:
+      host: "0.0.0.0"
+      port: 8080
+    
+    jwt:
+      issuer: "separ"
+      accessTokenExpirySecs: 3600
+      refreshTokenExpirySecs: 2592000
+  
+  # Secrets (use external secret management in production)
+  secrets:
+    jwtSecret: "change-this-in-production"
+    # Reference existing secrets instead
+    existingJwtSecret: ""
+    jwtSecretKey: "jwt-secret"
+
+# =============================================================================
+# SpiceDB
+# =============================================================================
+spicedb:
+  enabled: true
+  replicaCount: 3
+  
+  image:
+    repository: authzed/spicedb
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    grpcPort: 50051
+    httpPort: 50052
+    metricsPort: 50053
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  config:
+    datastoreEngine: postgres
+    # Will be constructed from postgresql connection details
+    datastoreConnUri: ""
+  
+  secrets:
+    presharedKey: "separ-preshared-key"
+    existingPresharedKeySecret: ""
+    presharedKeySecretKey: "preshared-key"
+
+# =============================================================================
+# PostgreSQL (Bitnami Chart)
+# =============================================================================
+postgresql:
+  enabled: true
+  
+  auth:
+    postgresPassword: "separ-postgres"
+    username: "separ"
+    password: "separ"
+    database: "separ"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    
+    initdb:
+      scripts:
+        create-spicedb-db.sql: |
+          CREATE DATABASE spicedb;
+          GRANT ALL PRIVILEGES ON DATABASE spicedb TO separ;
+  
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# =============================================================================
+# Redis (Bitnami Chart)
+# =============================================================================
+redis:
+  enabled: true
+  
+  architecture: standalone
+  
+  auth:
+    enabled: false
+  
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# =============================================================================
+# Service Account
+# =============================================================================
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# =============================================================================
+# Pod Security
+# =============================================================================
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# =============================================================================
+# Monitoring
+# =============================================================================
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+

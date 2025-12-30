@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: separ-postgres
+    environment:
+      POSTGRES_USER: separ
+      POSTGRES_PASSWORD: separ
+      POSTGRES_DB: separ
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U separ"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # SpiceDB for authorization
+  spicedb:
+    image: authzed/spicedb:latest
+    container_name: separ-spicedb
+    command: serve --grpc-preshared-key "somerandomkeyhere"
+    ports:
+      - "50051:50051"  # gRPC
+      - "8443:8443"    # HTTP/REST
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPICEDB_DATASTORE_ENGINE: postgres
+      SPICEDB_DATASTORE_CONN_URI: "postgres://separ:separ@postgres:5432/separ?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # SpiceDB migration (run once to initialize)
+  spicedb-migrate:
+    image: authzed/spicedb:latest
+    container_name: separ-spicedb-migrate
+    command: migrate head --datastore-engine postgres --datastore-conn-uri "postgres://separ:separ@postgres:5432/separ?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

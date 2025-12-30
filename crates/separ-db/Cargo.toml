@@ -1,0 +1,20 @@
+[package]
+name = "separ-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+separ-core = { workspace = true }
+
+# Use runtime-checked queries (no DATABASE_URL required at compile time)
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+

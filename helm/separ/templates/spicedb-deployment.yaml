@@ -1,0 +1,83 @@
+{{- if .Values.spicedb.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "separ.fullname" . }}-spicedb
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spicedb
+spec:
+  replicas: {{ .Values.spicedb.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "separ.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: spicedb
+  template:
+    metadata:
+      labels:
+        {{- include "separ.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: spicedb
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "separ.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
+          imagePullPolicy: {{ .Values.spicedb.image.pullPolicy }}
+          command: ["spicedb", "migrate", "head"]
+          env:
+            - name: SPICEDB_DATASTORE_ENGINE
+              value: {{ .Values.spicedb.config.datastoreEngine | quote }}
+            - name: SPICEDB_DATASTORE_CONN_URI
+              value: {{ include "separ.spicedbPostgresqlUrl" . | quote }}
+      containers:
+        - name: spicedb
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
+          imagePullPolicy: {{ .Values.spicedb.image.pullPolicy }}
+          command: ["spicedb", "serve"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.spicedb.service.grpcPort }}
+              protocol: TCP
+            - name: http
+              containerPort: {{ .Values.spicedb.service.httpPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.spicedb.service.metricsPort }}
+              protocol: TCP
+          env:
+            - name: SPICEDB_GRPC_PRESHARED_KEY
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.spicedb.secrets.existingPresharedKeySecret }}
+                  name: {{ .Values.spicedb.secrets.existingPresharedKeySecret }}
+                  key: {{ .Values.spicedb.secrets.presharedKeySecretKey }}
+                  {{- else }}
+                  name: {{ include "separ.fullname" . }}-secrets
+                  key: spicedb-preshared-key
+                  {{- end }}
+            - name: SPICEDB_DATASTORE_ENGINE
+              value: {{ .Values.spicedb.config.datastoreEngine | quote }}
+            - name: SPICEDB_DATASTORE_CONN_URI
+              value: {{ include "separ.spicedbPostgresqlUrl" . | quote }}
+          livenessProbe:
+            exec:
+              command: ["grpc_health_probe", "-addr=localhost:{{ .Values.spicedb.service.grpcPort }}"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["grpc_health_probe", "-addr=localhost:{{ .Values.spicedb.service.grpcPort }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.spicedb.resources | nindent 12 }}
+{{- end }}
+

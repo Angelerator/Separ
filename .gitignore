@@ -1,0 +1,48 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.env
+
+# Config overrides
+config/local.toml
+config/production.toml
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+*.profraw
+coverage/
+
+# Docker
+.docker/
+
+# Helm
+helm/*/charts/
+*.tgz
+

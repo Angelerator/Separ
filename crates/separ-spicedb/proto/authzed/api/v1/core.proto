@@ -1,0 +1,63 @@
+syntax = "proto3";
+package authzed.api.v1;
+
+option go_package = "github.com/authzed/authzed-go/proto/authzed/api/v1";
+
+// ObjectReference is used to refer to a specific object in the system.
+message ObjectReference {
+  string object_type = 1;
+  string object_id = 2;
+}
+
+// SubjectReference is used to refer to the subject of a relationship.
+message SubjectReference {
+  ObjectReference object = 1;
+  string optional_relation = 2;
+}
+
+// Relationship represents a relationship between a resource and a subject.
+message Relationship {
+  ObjectReference resource = 1;
+  string relation = 2;
+  SubjectReference subject = 3;
+  ContextualizedCaveat optional_caveat = 4;
+}
+
+// ContextualizedCaveat provides a caveat and its context.
+message ContextualizedCaveat {
+  string caveat_name = 1;
+  google.protobuf.Struct context = 2;
+}
+
+// RelationshipFilter is used to filter relationships.
+message RelationshipFilter {
+  string resource_type = 1;
+  string optional_resource_id = 2;
+  string optional_relation = 3;
+  SubjectFilter optional_subject_filter = 4;
+}
+
+// SubjectFilter is used to filter subjects in relationship queries.
+message SubjectFilter {
+  string subject_type = 1;
+  string optional_subject_id = 2;
+  RelationFilter optional_relation = 3;
+}
+
+// RelationFilter is used to filter by relation name.
+message RelationFilter {
+  string relation = 1;
+}
+
+// ZedToken is used for consistency tokens.
+message ZedToken {
+  string token = 1;
+}
+
+// Cursor is used for pagination.
+message Cursor {
+  string token = 1;
+}
+
+import "google/protobuf/struct.proto";
+

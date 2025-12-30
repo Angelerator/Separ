@@ -1,0 +1,24 @@
+syntax = "proto3";
+package authzed.api.v1;
+
+option go_package = "github.com/authzed/authzed-go/proto/authzed/api/v1";
+
+import "authzed/api/v1/core.proto";
+import "authzed/api/v1/permission_service.proto";
+
+service WatchService {
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}
+
+message WatchRequest {
+  repeated string optional_object_types = 1;
+  ZedToken optional_start_cursor = 2;
+  repeated RelationshipFilter optional_relationship_filters = 3;
+}
+
+message WatchResponse {
+  repeated RelationshipUpdate updates = 1;
+  ZedToken changes_through = 2;
+  repeated string optional_transaction_metadata = 3;
+}
+

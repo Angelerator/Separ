@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "separ.fullname" . }}
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.separ.autoscaling.enabled }}
+  replicas: {{ .Values.separ.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "separ.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "separ.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "separ.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.separ.image.repository }}:{{ .Values.separ.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.separ.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.separ.config.server.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          envFrom:
+            - configMapRef:
+                name: {{ include "separ.fullname" . }}-config
+          env:
+            - name: YEKTA__DATABASE__URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "separ.fullname" . }}-secrets
+                  key: database-url
+            - name: YEKTA__SPICEDB__TOKEN
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.spicedb.secrets.existingPresharedKeySecret }}
+                  name: {{ .Values.spicedb.secrets.existingPresharedKeySecret }}
+                  key: {{ .Values.spicedb.secrets.presharedKeySecretKey }}
+                  {{- else }}
+                  name: {{ include "separ.fullname" . }}-secrets
+                  key: spicedb-preshared-key
+                  {{- end }}
+            - name: YEKTA__JWT__SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.separ.secrets.existingJwtSecret }}
+                  name: {{ .Values.separ.secrets.existingJwtSecret }}
+                  key: {{ .Values.separ.secrets.jwtSecretKey }}
+                  {{- else }}
+                  name: {{ include "separ.fullname" . }}-secrets
+                  key: jwt-secret
+                  {{- end }}
+          resources:
+            {{- toYaml .Values.separ.resources | nindent 12 }}
+      {{- with .Values.separ.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.separ.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.separ.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+

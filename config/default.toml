@@ -1,0 +1,19 @@
+# Yekta Default Configuration
+
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+url = "postgres://separ:separ@localhost:5433/separ"
+max_connections = 10
+
+[spicedb]
+endpoint = "http://localhost:50051"
+token = "somerandomkeyhere"
+
+[jwt]
+secret = "change-me-in-production-use-a-long-random-string"
+issuer = "separ"
+access_token_expiry_secs = 3600
+refresh_token_expiry_secs = 604800
