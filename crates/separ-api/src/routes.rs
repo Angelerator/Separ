@@ -35,6 +35,8 @@ fn api_v1_routes(state: AppState) -> Router {
         .nest("/tenants", tenant_routes(state.clone()))
         // Authorization endpoints
         .nest("/authz", authz_routes(state.clone()))
+        // Identity provider management
+        .nest("/identity", identity_routes(state.clone()))
         // Placeholder routes (to be implemented)
         .nest("/workspaces", placeholder_routes())
         .nest("/applications", placeholder_routes())
@@ -64,6 +66,24 @@ fn authz_routes(state: AppState) -> Router {
         .route("/relationships", delete(handlers::authz::delete_relationship))
         .route("/lookup/resources", post(handlers::authz::lookup_resources))
         .route("/lookup/subjects", post(handlers::authz::lookup_subjects))
+        .with_state(state)
+}
+
+/// Identity provider management routes
+fn identity_routes(state: AppState) -> Router {
+    Router::new()
+        // Provider CRUD
+        .route("/providers", get(handlers::identity::list_providers))
+        .route("/providers", post(handlers::identity::create_provider))
+        .route("/providers/{id}", get(handlers::identity::get_provider))
+        .route("/providers/{id}", put(handlers::identity::update_provider))
+        .route("/providers/{id}", delete(handlers::identity::delete_provider))
+        // Sync operations
+        .route("/providers/{id}/sync", post(handlers::identity::trigger_sync))
+        .route("/providers/{id}/sync/history", get(handlers::identity::get_sync_history))
+        // Health checks
+        .route("/providers/{id}/test", post(handlers::identity::test_connection))
+        .route("/health", get(handlers::identity::health_check))
         .with_state(state)
 }
 

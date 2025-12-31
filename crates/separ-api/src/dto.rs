@@ -33,6 +33,26 @@ pub struct PaginatedResponse<T> {
     pub has_more: bool,
 }
 
+/// Pagination query parameters
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginationParams {
+    #[serde(default)]
+    pub offset: u32,
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+fn default_limit() -> u32 { 20 }
+
+impl Default for PaginationParams {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            limit: 20,
+        }
+    }
+}
+
 // ============================================================================
 // Tenant DTOs
 // ============================================================================

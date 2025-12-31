@@ -6,6 +6,8 @@ members = [
     "crates/separ-db",
     "crates/separ-sync",
     "crates/separ-oauth",
+    "crates/separ-identity",
+    "crates/separ-proxy",
     "crates/separ-api",
     "crates/separ-server",
 ]
@@ -68,11 +70,16 @@ hmac = "0.12"
 rand = "0.8"
 secrecy = { version = "0.10", features = ["serde"] }
 
+# URL encoding
+urlencoding = "2"
+
 # Internal crates
 separ-core = { path = "crates/separ-core" }
 separ-spicedb = { path = "crates/separ-spicedb" }
 separ-db = { path = "crates/separ-db" }
 separ-sync = { path = "crates/separ-sync" }
 separ-oauth = { path = "crates/separ-oauth" }
+separ-identity = { path = "crates/separ-identity" }
+separ-proxy = { path = "crates/separ-proxy" }
 separ-api = { path = "crates/separ-api" }
 

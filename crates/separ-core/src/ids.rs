@@ -94,6 +94,9 @@ define_id!(ApiKeyId, "key");
 define_id!(AuditEventId, "audit");
 define_id!(SessionId, "sess");
 
+// Identity provider IDs
+define_id!(IdentityProviderId, "idp");
+
 #[cfg(test)]
 mod tests {
     use super::*;

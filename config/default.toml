@@ -1,4 +1,4 @@
-# Yekta Default Configuration
+# Separ Default Configuration
 
 [server]
 host = "0.0.0.0"
@@ -10,10 +10,53 @@ max_connections = 10
 
 [spicedb]
 endpoint = "http://localhost:50051"
-token = "somerandomkeyhere"
+token = "supersecretkey"
 
 [jwt]
 secret = "change-me-in-production-use-a-long-random-string"
 issuer = "separ"
 access_token_expiry_secs = 3600
 refresh_token_expiry_secs = 604800
+
+# Identity Provider Settings
+[identity]
+# Default sync interval in seconds
+default_sync_interval_secs = 300
+# Maximum concurrent syncs
+max_concurrent_syncs = 5
+# Enable JIT (Just-In-Time) provisioning globally
+jit_provisioning_enabled = true
+
+# Example Azure AD configuration (disabled by default)
+# [identity.providers.azure_ad]
+# enabled = false
+# tenant_id = "your-azure-tenant-id"
+# client_id = "your-client-id"
+# client_secret = "your-client-secret"
+# sync_users = true
+# sync_groups = true
+# sync_apps = false
+# domains = ["example.com"]
+
+# Example Okta configuration (disabled by default)
+# [identity.providers.okta]
+# enabled = false
+# domain = "your-org.okta.com"
+# client_id = "your-client-id"
+# client_secret = "your-client-secret"
+# api_token = "your-api-token"
+# sync_users = true
+# sync_groups = true
+# domains = ["example.com"]
+
+# Example Google Workspace configuration (disabled by default)
+# [identity.providers.google]
+# enabled = false
+# project_id = "your-project-id"
+# client_id = "your-client-id"
+# client_secret = "your-client-secret"
+# admin_email = "admin@example.com"
+# customer_id = "my_customer"
+# sync_users = true
+# sync_groups = true
+# domains = ["example.com"]

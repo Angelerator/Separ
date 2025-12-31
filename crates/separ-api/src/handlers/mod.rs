@@ -2,6 +2,7 @@
 
 pub mod authz;
 pub mod health;
+pub mod identity;
 pub mod tenants;
 
 use axum::http::StatusCode;

@@ -1,0 +1,52 @@
+[package]
+name = "separ-identity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Identity provider implementations for Separ authorization platform"
+
+[features]
+default = ["azure", "okta", "google", "oidc"]
+azure = []
+okta = []
+google = []
+oidc = []
+saml = []
+ldap = ["dep:ldap3"]
+all = ["azure", "okta", "google", "oidc", "saml", "ldap"]
+
+[dependencies]
+separ-core = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Authentication
+jsonwebtoken = { workspace = true }
+oauth2 = { workspace = true }
+openidconnect = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+base64 = { workspace = true }
+urlencoding = { workspace = true }
+
+# Optional: LDAP support
+ldap3 = { version = "0.11", optional = true }
+
+# Caching
+dashmap = { workspace = true }
+
