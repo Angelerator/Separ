@@ -43,7 +43,7 @@ prost = "0.13"
 prost-types = "0.13"
 
 # Authentication
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 oauth2 = "4"
 openidconnect = "4"
 
