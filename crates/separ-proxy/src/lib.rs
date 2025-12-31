@@ -33,6 +33,9 @@ pub mod connection;
 pub mod protocol;
 pub mod proxy;
 
+#[cfg(test)]
+mod tests;
+
 pub use config::ProxyConfig;
 pub use proxy::SeparProxy;
 

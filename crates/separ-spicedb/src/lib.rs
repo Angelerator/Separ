@@ -4,6 +4,9 @@ pub mod client;
 pub mod schema;
 pub mod service;
 
+#[cfg(test)]
+mod tests;
+
 pub use client::{SpiceDbClient, SpiceDbConfig};
 pub use schema::YEKTA_SCHEMA;
 pub use service::SpiceDbAuthorizationService;

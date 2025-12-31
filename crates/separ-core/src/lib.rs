@@ -6,6 +6,9 @@ pub mod ids;
 pub mod models;
 pub mod traits;
 
+#[cfg(test)]
+mod tests;
+
 pub use error::*;
 pub use identity::*;
 pub use ids::*;

@@ -20,6 +20,9 @@ pub mod providers;
 pub mod registry;
 pub mod sync;
 
+#[cfg(test)]
+mod tests;
+
 // Re-export provider implementations
 #[cfg(feature = "azure")]
 pub use providers::azure::AzureAdProvider;
