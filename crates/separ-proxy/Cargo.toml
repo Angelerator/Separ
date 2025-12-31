@@ -29,7 +29,7 @@ thiserror = { workspace = true }
 bytes = "1"
 
 # PostgreSQL wire protocol
-md5 = "0.7"
+md5 = "0.8"
 sha2 = "0.10"
 hmac = "0.12"
 scram = "0.5"
