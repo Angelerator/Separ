@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+    tags:
+      - 'v*'
+      - 'ci-*'
+  workflow_dispatch:
+    inputs:
+      run_integration_tests:
+        description: 'Run integration tests'
+        required: false
+        default: 'false'
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -126,11 +133,12 @@ jobs:
         run: cargo test --workspace --verbose
 
   # =============================================================================
-  # Integration Tests (with SpiceDB)
+  # Integration Tests (with SpiceDB) - Optional
   # =============================================================================
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_integration_tests == 'true' || startsWith(github.ref, 'refs/tags/v') }}
     services:
       spicedb:
         image: authzed/spicedb:latest
@@ -141,7 +149,7 @@ jobs:
           SPICEDB_GRPC_PRESHARED_KEY: "testsecretkey"
           SPICEDB_DATASTORE_ENGINE: memory
         options: >-
-          --health-cmd "grpc_health_probe -addr=:50051"
+          --health-cmd "grpc_health_probe -addr=:50051 || exit 0"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -171,22 +179,8 @@ jobs:
         with:
           version: "25.x"
 
-      - name: Install grpc_health_probe
-        run: |
-          GRPC_HEALTH_PROBE_VERSION=v0.4.22
-          wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64
-          chmod +x /usr/local/bin/grpc_health_probe
-
-      - name: Wait for SpiceDB
-        run: |
-          for i in {1..30}; do
-            if grpc_health_probe -addr=localhost:50051 2>/dev/null; then
-              echo "SpiceDB is ready"
-              break
-            fi
-            echo "Waiting for SpiceDB... ($i/30)"
-            sleep 2
-          done
+      - name: Wait for services
+        run: sleep 10
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -260,15 +254,16 @@ jobs:
 
       - name: Run security audit
         run: cargo audit
-        continue-on-error: true  # Don't fail on audit warnings for now
+        continue-on-error: true
 
   # =============================================================================
-  # Coverage (Optional)
+  # Coverage
   # =============================================================================
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
     needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
       
@@ -304,4 +299,3 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
-

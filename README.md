@@ -1,15 +1,35 @@
 # Separ - Multi-Tenant Authorization Platform
 
-**Separ** (سپر - meaning "shield" in Persian) is a highly secure, multi-tenant authorization platform built on SpiceDB and Google Zanzibar principles.
+<div align="center">
+
+![Separ Logo](https://img.shields.io/badge/Separ-🛡️-blue?style=for-the-badge)
+
+**سپر** (Separ - "Shield" in Persian)
+
+A highly secure, multi-tenant authorization platform built on SpiceDB and Google Zanzibar principles.
+
+[![CI](https://github.com/Angelerator/Separ/actions/workflows/ci.yml/badge.svg)](https://github.com/Angelerator/Separ/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [API Reference](#-api-endpoints) • [Contributing](#-contributing)
+
+</div>
+
+---
 
 ## 🎯 Features
 
-- **Multi-Tenant Architecture**: Support for 1000+ applications and services
-- **SpiceDB Integration**: Google Zanzibar-style relationship-based access control
-- **OAuth/SSO Support**: Microsoft Entra ID, Google, Okta, and custom providers
-- **Federated Sync**: Sync customer IdPs with central authorization
-- **PostgreSQL Backend**: Reliable metadata and audit storage
-- **Rust Implementation**: Memory-safe, high-performance, low-latency
+| Feature | Description |
+|---------|-------------|
+| **Multi-Tenant Architecture** | Support for 1000+ applications and services with complete isolation |
+| **SpiceDB Integration** | Google Zanzibar-style relationship-based access control (ReBAC) |
+| **OAuth/SSO Support** | Microsoft Entra ID, Google, Okta, and custom OIDC providers |
+| **Federated Identity Sync** | Sync customer IdPs with central authorization via SCIM/webhooks |
+| **PostgreSQL Backend** | Reliable metadata storage with full audit logging |
+| **Rust Implementation** | Memory-safe, high-performance, low-latency authorization checks |
+| **Modular Identity Providers** | Pluggable provider architecture for Azure AD, Okta, Google, LDAP |
+| **Proxy Mode** | PostgreSQL wire protocol proxy for transparent authorization |
 
 ## 🏗️ Architecture
 
@@ -77,6 +97,8 @@
 | `separ-db` | PostgreSQL models and migrations |
 | `separ-sync` | Tenant sync service (SCIM, webhooks) |
 | `separ-oauth` | OAuth/OIDC provider integration |
+| `separ-identity` | Modular identity provider implementations |
+| `separ-proxy` | PostgreSQL wire protocol proxy |
 | `separ-api` | API handlers and middleware |
 | `separ-server` | Main server binary |
 
@@ -89,43 +111,66 @@
 - PostgreSQL 15+
 - SpiceDB
 
-### Development Setup
+### Option 1: Docker Compose (Recommended)
 
 ```bash
-# Start infrastructure (PostgreSQL + SpiceDB)
+# Clone the repository
+git clone https://github.com/Angelerator/Separ.git
+cd Separ
+
+# Start all services
 docker-compose up -d
+
+# Check health
+curl http://localhost:8080/health
+```
+
+### Option 2: Development Setup
+
+```bash
+# Start infrastructure only
+docker-compose up -d postgres spicedb
 
 # Run database migrations
 docker exec -i separ-postgres psql -U separ -d separ < crates/separ-db/migrations/20250101000001_initial_schema.sql
 
-# Start the server
+# Build and run the server
 cargo run -p separ-server
 ```
 
 The server will be available at `http://localhost:8080`.
 
-### Environment Variables
+### Configuration
 
-Configuration is managed via `config/default.toml`. Key settings:
+Configuration is managed via `config/default.toml`:
 
-```env
-DATABASE_URL=postgres://separ:separ@localhost:5433/separ
-SPICEDB_ENDPOINT=http://localhost:50051
-SPICEDB_TOKEN=supersecretkey
-JWT_SECRET=your-jwt-secret
+```toml
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+url = "postgres://separ:separ@localhost:5433/separ"
+
+[spicedb]
+endpoint = "http://localhost:50051"
+token = "supersecretkey"
+
+[jwt]
+secret = "your-jwt-secret-here"
 ```
 
 > **Note**: Docker Compose maps PostgreSQL to port **5433** to avoid conflicts with local installations.
 
-> ⚠️ **Security Warning**: The default `supersecretkey` and database credentials are for **development only**. In production, you must:
-> - Generate a strong, random SpiceDB preshared key (min 32 characters)
-> - Use strong PostgreSQL credentials
+> ⚠️ **Security Warning**: The default credentials are for **development only**. In production:
+> - Generate a strong SpiceDB preshared key (min 32 characters)
+> - Use strong PostgreSQL credentials  
 > - Set a secure `JWT_SECRET`
 > - Enable TLS for all connections
 
 ## 🔐 SpiceDB Schema
 
-The platform uses a hierarchical schema:
+The platform uses a hierarchical permission model:
 
 ```zed
 definition platform {
@@ -176,32 +221,63 @@ definition resource {
 
 ## 📡 API Endpoints
 
-### Health
-- `GET /health` - Health check
+### Health & Metrics
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/metrics` | Prometheus metrics |
 
 ### Tenant Management
-- `POST /api/v1/tenants` - Create tenant
-- `GET /api/v1/tenants` - List tenants
-- `GET /api/v1/tenants/{id}` - Get tenant
-- `PUT /api/v1/tenants/{id}` - Update tenant
-- `DELETE /api/v1/tenants/{id}` - Delete tenant
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/tenants` | Create tenant |
+| `GET` | `/api/v1/tenants` | List tenants |
+| `GET` | `/api/v1/tenants/{id}` | Get tenant |
+| `PUT` | `/api/v1/tenants/{id}` | Update tenant |
+| `DELETE` | `/api/v1/tenants/{id}` | Delete tenant |
 
 ### Authorization
-- `POST /api/v1/authz/check` - Check permission
-- `GET /api/v1/authz/relationships` - Read/browse relationships (requires `resource_type` filter)
-- `POST /api/v1/authz/relationships` - Write relationship
-- `DELETE /api/v1/authz/relationships` - Delete relationships
-- `POST /api/v1/authz/lookup/subjects` - Lookup subjects with permission
-- `POST /api/v1/authz/lookup/resources` - Lookup resources user can access
 
-### OAuth/SSO (Framework)
-- `GET /api/v1/oauth/{provider}/login` - Initiate OAuth flow
-- `GET /api/v1/oauth/{provider}/callback` - OAuth callback
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/authz/check` | Check permission |
+| `GET` | `/api/v1/authz/relationships` | Browse relationships (requires `resource_type`) |
+| `POST` | `/api/v1/authz/relationships` | Write relationship |
+| `DELETE` | `/api/v1/authz/relationships` | Delete relationships |
+| `POST` | `/api/v1/authz/lookup/subjects` | Lookup subjects with permission |
+| `POST` | `/api/v1/authz/lookup/resources` | Lookup accessible resources |
 
-### Sync (SCIM - Framework)
-- `POST /api/v1/sync/webhook` - Handle identity provider webhooks
+### OAuth/SSO
 
-## 🧪 Quick Test
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/oauth/{provider}/login` | Initiate OAuth flow |
+| `GET` | `/api/v1/oauth/{provider}/callback` | OAuth callback |
+
+### Identity Sync
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/sync/webhook` | Handle IdP webhooks |
+| `POST` | `/api/v1/identity/providers` | Register identity provider |
+| `GET` | `/api/v1/identity/providers` | List identity providers |
+
+## 🧪 Testing
+
+### Run All Tests
+
+```bash
+# Unit tests
+cargo test --workspace
+
+# With integration tests (requires Docker services)
+docker-compose up -d
+cargo test --workspace -- --include-ignored
+```
+
+### Quick API Test
 
 ```bash
 # Create a tenant
@@ -212,39 +288,115 @@ curl -X POST http://localhost:8080/api/v1/tenants \
 # Add owner permission
 curl -X POST http://localhost:8080/api/v1/authz/relationships \
   -H "Content-Type: application/json" \
-  -d '{"resource_type": "tenant", "resource_id": "<TENANT_ID>", "relation": "owner", "subject_type": "user", "subject_id": "alice"}'
+  -d '{
+    "resource_type": "tenant",
+    "resource_id": "<TENANT_ID>",
+    "relation": "owner",
+    "subject_type": "user",
+    "subject_id": "alice"
+  }'
 
 # Check permission
 curl -X POST http://localhost:8080/api/v1/authz/check \
   -H "Content-Type: application/json" \
-  -d '{"resource_type": "tenant", "resource_id": "<TENANT_ID>", "permission": "manage", "subject_type": "user", "subject_id": "alice"}'
+  -d '{
+    "resource_type": "tenant",
+    "resource_id": "<TENANT_ID>",
+    "permission": "manage",
+    "subject_type": "user",
+    "subject_id": "alice"
+  }'
 
-# Browse all tenant relationships
+# Browse relationships
 curl "http://localhost:8080/api/v1/authz/relationships?resource_type=tenant" | jq .
 ```
 
-## 🔍 Browsing Relationships with Zed CLI
+## 🔍 Using Zed CLI
 
-You can also use AuthZed's official CLI to browse and manage relationships:
+AuthZed's official CLI for managing SpiceDB:
 
 ```bash
-# Install zed CLI
+# Install
 brew install authzed/tap/zed
 
-# Set up context
+# Configure context
 zed context set separ "localhost:50051" "supersecretkey" --insecure
 
-# Read schema
+# View schema
 zed schema read --insecure
 
-# Read all tenant relationships
+# Read relationships
 zed relationship read tenant --insecure
 
-# Check a permission
+# Check permission
 zed permission check tenant:<TENANT_ID> manage user:alice --insecure
 ```
 
+## 🚢 Deployment
+
+### Docker
+
+```bash
+# Build image
+docker build -t separ:latest .
+
+# Run with environment variables
+docker run -d \
+  -p 8080:8080 \
+  -e DATABASE_URL="postgres://user:pass@host/db" \
+  -e SPICEDB_ENDPOINT="http://spicedb:50051" \
+  -e SPICEDB_TOKEN="your-secure-token" \
+  separ:latest
+```
+
+### Releasing
+
+Releases are automated via GitHub Actions. To create a release:
+
+```bash
+# Tag a release
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers:
+- Cross-platform builds (Linux x86_64/musl, macOS x86_64/arm64)
+- Docker multi-arch image push to GHCR
+- GitHub Release with artifacts and checksums
+
+## 🛡️ Security
+
+- **Authentication**: JWT, API Keys, Service Tokens, mTLS
+- **Authorization**: SpiceDB-based relationship authorization
+- **Audit Logging**: Complete audit trail in PostgreSQL
+- **Rate Limiting**: Configurable per-endpoint limits
+- **TLS**: Full TLS support for all connections
+
+### Reporting Vulnerabilities
+
+Please report security vulnerabilities via GitHub Security Advisories.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open a Pull Request
+
+### Development Guidelines
+
+- Run `cargo fmt` before committing
+- Ensure `cargo clippy` passes without warnings
+- Add tests for new functionality
+- Update documentation as needed
+
 ## 📄 License
 
-Apache-2.0
+Apache-2.0 - See [LICENSE](LICENSE) for details.
 
+---
+
+<div align="center">
+Made with ❤️ by <a href="https://github.com/Angelerator">Angelerator</a>
+</div>

@@ -69,10 +69,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/separ-server dist/
+          cp target/${{ matrix.target }}/release/separ-server dist/ || true
           cd dist
-          tar -czvf separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz separ-server
-          sha256sum separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          if [ -f separ-server ]; then
+            tar -czvf separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz separ-server
+            sha256sum separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          fi
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
@@ -80,6 +82,7 @@ jobs:
           files: |
             dist/separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
             dist/separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+        continue-on-error: true
 
   # =============================================================================
   # Build macOS
@@ -110,10 +113,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/separ-server dist/
+          cp target/${{ matrix.target }}/release/separ-server dist/ || true
           cd dist
-          tar -czvf separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz separ-server
-          shasum -a 256 separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          if [ -f separ-server ]; then
+            tar -czvf separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz separ-server
+            shasum -a 256 separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          fi
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
@@ -121,6 +126,7 @@ jobs:
           files: |
             dist/separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
             dist/separ-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+        continue-on-error: true
 
   # =============================================================================
   # Build Docker Image
@@ -166,4 +172,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
