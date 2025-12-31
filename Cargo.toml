@@ -44,7 +44,7 @@ prost-types = "0.13"
 
 # Authentication
 jsonwebtoken = "9"
-oauth2 = "4"
+oauth2 = "5"
 openidconnect = "4"
 
 # HTTP client
