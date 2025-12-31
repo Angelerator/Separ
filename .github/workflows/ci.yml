@@ -1,0 +1,307 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # =============================================================================
+  # Check & Lint
+  # =============================================================================
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+
+      - name: Run cargo check
+        run: cargo check --workspace --all-targets
+
+  # =============================================================================
+  # Format Check
+  # =============================================================================
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # =============================================================================
+  # Clippy Lints
+  # =============================================================================
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: clippy
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-clippy-
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # =============================================================================
+  # Unit Tests
+  # =============================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+  # =============================================================================
+  # Integration Tests (with SpiceDB)
+  # =============================================================================
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      spicedb:
+        image: authzed/spicedb:latest
+        ports:
+          - 50051:50051
+          - 8443:8443
+        env:
+          SPICEDB_GRPC_PRESHARED_KEY: "testsecretkey"
+          SPICEDB_DATASTORE_ENGINE: memory
+        options: >-
+          --health-cmd "grpc_health_probe -addr=:50051"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: separ
+          POSTGRES_PASSWORD: separ
+          POSTGRES_DB: separ
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+
+      - name: Install grpc_health_probe
+        run: |
+          GRPC_HEALTH_PROBE_VERSION=v0.4.22
+          wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64
+          chmod +x /usr/local/bin/grpc_health_probe
+
+      - name: Wait for SpiceDB
+        run: |
+          for i in {1..30}; do
+            if grpc_health_probe -addr=localhost:50051 2>/dev/null; then
+              echo "SpiceDB is ready"
+              break
+            fi
+            echo "Waiting for SpiceDB... ($i/30)"
+            sleep 2
+          done
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-integration-
+
+      - name: Run integration tests
+        env:
+          SPICEDB_ENDPOINT: http://localhost:50051
+          SPICEDB_TOKEN: testsecretkey
+          DATABASE_URL: postgres://separ:separ@localhost:5432/separ
+        run: cargo test --workspace -- --include-ignored
+
+  # =============================================================================
+  # Build
+  # =============================================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [check, fmt, clippy, test]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: Build release
+        run: cargo build --release --workspace
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: separ-binaries
+          path: |
+            target/release/separ-server
+          retention-days: 7
+
+  # =============================================================================
+  # Security Audit
+  # =============================================================================
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run security audit
+        run: cargo audit
+        continue-on-error: true  # Don't fail on audit warnings for now
+
+  # =============================================================================
+  # Coverage (Optional)
+  # =============================================================================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-coverage-
+
+      - name: Generate coverage report
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+
