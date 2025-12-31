@@ -48,7 +48,7 @@ oauth2 = "4"
 openidconnect = "4"
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "rustls-tls"], default-features = false }
 
 # Utilities
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
