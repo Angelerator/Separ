@@ -38,17 +38,17 @@ serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate"] }
 
 # SpiceDB / gRPC
-tonic = { version = "0.14", features = ["tls"] }
-prost = "0.14"
-prost-types = "0.14"
+tonic = { version = "0.12", features = ["tls"] }
+prost = "0.13"
+prost-types = "0.13"
 
 # Authentication
-jsonwebtoken = "10"
-oauth2 = "5"
+jsonwebtoken = "9"
+oauth2 = "4"
 openidconnect = "4"
 
 # HTTP client
-reqwest = { version = "0.13", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 # Utilities
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
