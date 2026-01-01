@@ -6,17 +6,20 @@ metadata:
   labels:
     {{- include "separ.labels" . | nindent 4 }}
     app.kubernetes.io/component: spicedb
+    app.kubernetes.io/name: spicedb
 spec:
   replicas: {{ .Values.spicedb.replicaCount }}
   selector:
     matchLabels:
       {{- include "separ.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: spicedb
+      app.kubernetes.io/name: spicedb
   template:
     metadata:
       labels:
         {{- include "separ.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: spicedb
+        app.kubernetes.io/name: spicedb
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -27,19 +30,35 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         - name: migrate
+          {{- if .Values.global.imageRegistry }}
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
+          {{- else }}
           image: "{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.spicedb.image.pullPolicy }}
           command: ["spicedb", "migrate", "head"]
           env:
             - name: SPICEDB_DATASTORE_ENGINE
               value: {{ .Values.spicedb.config.datastoreEngine | quote }}
+            {{- if .Values.externalSpicedbDatabase }}
+            - name: SPICEDB_DATASTORE_CONN_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "separ.fullname" . }}-secrets
+                  key: spicedb-database-url
+            {{- else }}
             - name: SPICEDB_DATASTORE_CONN_URI
               value: {{ include "separ.spicedbPostgresqlUrl" . | quote }}
+            {{- end }}
       containers:
         - name: spicedb
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.global.imageRegistry }}
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
+          {{- else }}
           image: "{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.spicedb.image.pullPolicy }}
           command: ["spicedb", "serve"]
           ports:
@@ -65,19 +84,35 @@ spec:
                   {{- end }}
             - name: SPICEDB_DATASTORE_ENGINE
               value: {{ .Values.spicedb.config.datastoreEngine | quote }}
+            {{- if .Values.externalSpicedbDatabase }}
+            - name: SPICEDB_DATASTORE_CONN_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "separ.fullname" . }}-secrets
+                  key: spicedb-database-url
+            {{- else }}
             - name: SPICEDB_DATASTORE_CONN_URI
               value: {{ include "separ.spicedbPostgresqlUrl" . | quote }}
+            {{- end }}
           livenessProbe:
             exec:
               command: ["grpc_health_probe", "-addr=localhost:{{ .Values.spicedb.service.grpcPort }}"]
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
+            failureThreshold: 5
           readinessProbe:
             exec:
               command: ["grpc_health_probe", "-addr=localhost:{{ .Values.spicedb.service.grpcPort }}"]
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 5
           resources:
             {{- toYaml .Values.spicedb.resources | nindent 12 }}
+      {{- with .Values.separ.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.separ.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}
-
