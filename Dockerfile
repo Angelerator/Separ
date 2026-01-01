@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-# Build release binary
-RUN cargo build --release --package separ-server
+# Build release binary (use --locked to respect Cargo.lock exactly)
+RUN cargo build --release --locked --package separ-server
 
 # Runtime stage
 FROM debian:bookworm-slim
