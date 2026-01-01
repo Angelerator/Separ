@@ -60,13 +60,13 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-PostgreSQL connection string
+PostgreSQL connection string for Separ
 */}}
 {{- define "separ.postgresqlUrl" -}}
 {{- if .Values.postgresql.enabled }}
 postgres://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ .Release.Name }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
-{{- else }}
-{{- .Values.externalDatabase.url }}
+{{- else if .Values.externalDatabase }}
+postgres://{{ .Values.externalDatabase.username }}@{{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port | default 5432 }}/{{ .Values.externalDatabase.database }}?sslmode={{ .Values.externalDatabase.sslMode | default "require" }}
 {{- end }}
 {{- end }}
 
@@ -76,6 +76,8 @@ SpiceDB PostgreSQL connection string
 {{- define "separ.spicedbPostgresqlUrl" -}}
 {{- if .Values.postgresql.enabled }}
 postgres://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ .Release.Name }}-postgresql:5432/spicedb?sslmode=disable
+{{- else if .Values.externalDatabase }}
+postgres://{{ .Values.externalDatabase.username }}@{{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port | default 5432 }}/spicedb?sslmode={{ .Values.externalDatabase.sslMode | default "require" }}
 {{- else }}
 {{- .Values.spicedb.config.datastoreConnUri }}
 {{- end }}
@@ -92,3 +94,13 @@ SpiceDB endpoint
 {{- end }}
 {{- end }}
 
+{{/*
+PostgreSQL host
+*/}}
+{{- define "separ.postgresqlHost" -}}
+{{- if .Values.postgresql.enabled }}
+{{ .Release.Name }}-postgresql
+{{- else if .Values.externalDatabase }}
+{{ .Values.externalDatabase.host }}
+{{- end }}
+{{- end }}

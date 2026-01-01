@@ -1,0 +1,30 @@
+{{- if gt (int .Values.separ.replicaCount) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "separ.fullname" . }}
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "separ.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+---
+{{- end }}
+{{- if and .Values.spicedb.enabled (gt (int .Values.spicedb.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "separ.fullname" . }}-spicedb
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "separ.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: spicedb
+{{- end }}
+

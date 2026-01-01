@@ -1,62 +1,50 @@
-# Separ Authorization Platform - Helm Values
+# Separ Authorization Platform - Production Values
 # ============================================================================
-# Default values - override in values-production.yaml for customer deployments
+# Use this file for customer deployments in restricted networks
 # ============================================================================
 
 # =============================================================================
 # Global Configuration
 # =============================================================================
 global:
-  # Image registry (set to private registry for restricted networks)
-  imageRegistry: ""
-  # Pull secrets for private registries
-  imagePullSecrets: []
-  # - name: regcred
+  # Use Angelerator Docker Hub images (for restricted networks)
+  imageRegistry: "docker.io"
+  imagePullSecrets:
+    - name: angelerator-registry
 
 # =============================================================================
 # Separ API Server
 # =============================================================================
 separ:
-  replicaCount: 2
+  replicaCount: 3
   
   image:
+    # Angelerator Docker Hub repository
     repository: angelerator/separ
-    tag: "latest"
+    tag: "v1.0.0"  # Set to deployed version
     pullPolicy: IfNotPresent
   
   service:
     type: ClusterIP
     port: 8080
   
-  # Ingress disabled by default - use internal ClusterIP
+  # No ingress - internal only
   ingress:
     enabled: false
-    className: nginx
-    annotations: {}
-    hosts:
-      - host: separ.internal
-        paths:
-          - path: /
-            pathType: Prefix
-    tls: []
   
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 200m
+      memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 1000m
+      memory: 1Gi
   
   autoscaling:
-    enabled: false
-    minReplicas: 2
+    enabled: true
+    minReplicas: 3
     maxReplicas: 10
-    targetCPUUtilizationPercentage: 80
-  
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
+    targetCPUUtilizationPercentage: 70
   
   config:
     server:
@@ -68,26 +56,10 @@ separ:
       accessTokenExpirySecs: 3600
       refreshTokenExpirySecs: 2592000
   
-  # Secrets (use external secret management in production)
+  # Use Kubernetes secrets
   secrets:
-    jwtSecret: "change-this-in-production"
-    existingJwtSecret: ""
+    existingJwtSecret: "separ-secrets"
     jwtSecretKey: "jwt-secret"
-  
-  # Probes
-  livenessProbe:
-    httpGet:
-      path: /health/live
-      port: 8080
-    initialDelaySeconds: 10
-    periodSeconds: 10
-  
-  readinessProbe:
-    httpGet:
-      path: /health/ready
-      port: 8080
-    initialDelaySeconds: 5
-    periodSeconds: 5
 
 # =============================================================================
 # SpiceDB (Authorization Engine)
@@ -101,92 +73,62 @@ spicedb:
     tag: "v1.33.0"
     pullPolicy: IfNotPresent
   
-  service:
-    type: ClusterIP
-    grpcPort: 50051
-    httpPort: 50052
-    metricsPort: 50053
-  
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
+      cpu: 200m
+      memory: 512Mi
     limits:
-      cpu: 1000m
-      memory: 1Gi
-  
-  config:
-    datastoreEngine: postgres
-    datastoreConnUri: ""
+      cpu: 2000m
+      memory: 2Gi
   
   secrets:
-    presharedKey: "change-this-in-production"
-    existingPresharedKeySecret: ""
-    presharedKeySecretKey: "preshared-key"
+    existingPresharedKeySecret: "separ-secrets"
+    presharedKeySecretKey: "spicedb-preshared-key"
 
 # =============================================================================
-# PostgreSQL (Metadata Store)
+# PostgreSQL - Use Azure Database for PostgreSQL
 # =============================================================================
 postgresql:
-  # Set to false if using external managed database
-  enabled: true
-  
-  auth:
-    postgresPassword: "separ-postgres"
-    username: "separ"
-    password: "separ"
-    database: "separ"
-  
-  primary:
-    persistence:
-      enabled: true
-      size: 10Gi
-    
-    initdb:
-      scripts:
-        create-spicedb-db.sql: |
-          CREATE DATABASE spicedb;
-          GRANT ALL PRIVILEGES ON DATABASE spicedb TO separ;
-  
-  resources:
-    requests:
-      cpu: 250m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
+  # Disable bundled PostgreSQL - use managed database
+  enabled: false
+
+# External PostgreSQL connection
+externalDatabase:
+  host: "separ-db.postgres.database.azure.com"
+  port: 5432
+  database: "separ"
+  username: "separ"
+  # Use Kubernetes secret
+  existingSecret: "separ-secrets"
+  passwordKey: "postgres-password"
+  sslMode: "require"
 
 # =============================================================================
-# Network Policies (Security)
+# Network Policies (Security) - ENABLED
 # =============================================================================
 networkPolicy:
-  enabled: false
+  enabled: true
   
-  # Namespaces allowed to access Separ API
+  # Only allow access from approved namespaces
   allowedNamespaces:
     - name: tavana
-    # Add more namespaces as needed
-  
-  # Additional pod selectors allowed to access Separ
-  allowedPodSelectors: []
-  # - matchLabels:
-  #     app: my-app
+    # Add more approved app namespaces here
 
 # =============================================================================
-# Service Account
+# Service Account with Azure Workload Identity
 # =============================================================================
 serviceAccount:
   create: true
-  annotations: {}
-  # Azure Workload Identity
-  # azure.workload.identity/client-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  name: ""
+  annotations:
+    azure.workload.identity/client-id: ""  # Set during deployment
+  name: "separ"
 
 # =============================================================================
-# Pod Security
+# Pod Security - Strict
 # =============================================================================
 podSecurityContext:
   fsGroup: 1000
+  runAsNonRoot: true
 
 securityContext:
   runAsNonRoot: true
@@ -196,6 +138,8 @@ securityContext:
   capabilities:
     drop:
       - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 # =============================================================================
 # Monitoring
@@ -203,6 +147,7 @@ securityContext:
 metrics:
   enabled: true
   serviceMonitor:
-    enabled: false
-    namespace: ""
+    enabled: true
+    namespace: "monitoring"
     interval: 30s
+

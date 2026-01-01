@@ -1,0 +1,164 @@
+{{- if .Values.networkPolicy.enabled }}
+---
+# Network Policy: Separ API - Only allow access from approved namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "separ.fullname" . }}-api
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "separ.name" . }}
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from approved namespaces
+    {{- range .Values.networkPolicy.allowedNamespaces }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .name }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.separ.service.port }}
+    {{- end }}
+    # Allow from same namespace (SpiceDB, etc.)
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.separ.service.port }}
+    # Allow additional pod selectors
+    {{- range .Values.networkPolicy.allowedPodSelectors }}
+    - from:
+        - podSelector:
+            {{- toYaml . | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.separ.service.port }}
+    {{- end }}
+  egress:
+    # Allow to SpiceDB
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spicedb
+      ports:
+        - protocol: TCP
+          port: {{ .Values.spicedb.service.grpcPort }}
+    # Allow to PostgreSQL (internal)
+    {{- if .Values.postgresql.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+    # Allow to external PostgreSQL
+    {{- if .Values.externalDatabase }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: {{ .Values.externalDatabase.port | default 5432 }}
+    {{- end }}
+    # Allow DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Network Policy: SpiceDB - Only allow access from Separ API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "separ.fullname" . }}-spicedb
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spicedb
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only Separ API can access SpiceDB
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "separ.name" . }}
+              app.kubernetes.io/component: api
+      ports:
+        - protocol: TCP
+          port: {{ .Values.spicedb.service.grpcPort }}
+        - protocol: TCP
+          port: {{ .Values.spicedb.service.httpPort }}
+        - protocol: TCP
+          port: {{ .Values.spicedb.service.metricsPort }}
+  egress:
+    # Allow to PostgreSQL (internal)
+    {{- if .Values.postgresql.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+    # Allow to external PostgreSQL
+    {{- if .Values.externalDatabase }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: {{ .Values.externalDatabase.port | default 5432 }}
+    {{- end }}
+    # Allow DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Network Policy: PostgreSQL - Only allow access from Separ and SpiceDB
+{{- if .Values.postgresql.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "separ.fullname" . }}-postgresql
+  labels:
+    {{- include "separ.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only Separ API and SpiceDB can access PostgreSQL
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "separ.name" . }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spicedb
+      ports:
+        - protocol: TCP
+          port: 5432
+{{- end }}
+{{- end }}
+
