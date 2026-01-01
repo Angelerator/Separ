@@ -206,3 +206,26 @@ metrics:
     enabled: false
     namespace: ""
     interval: 30s
+
+# =============================================================================
+# Azure Key Vault Integration (CSI Secret Store)
+# =============================================================================
+azureKeyVault:
+  # Enable Azure Key Vault integration for secrets
+  enabled: false
+  
+  # Key Vault name (set during deployment)
+  name: ""
+  
+  # Azure tenant ID (set during deployment)
+  tenantId: ""
+  
+  # User-assigned managed identity client ID (set during deployment)
+  userAssignedIdentityClientId: ""
+  
+  # Secret names in Key Vault (not the actual secrets!)
+  secrets:
+    jwtSecret: "separ-jwt-secret"
+    spicedbPresharedKey: "separ-spicedb-preshared-key"
+    postgresPassword: "separ-postgres-password"
+    postgresHost: "separ-postgres-host"
