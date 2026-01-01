@@ -19,6 +19,9 @@ spec:
       labels:
         {{- include "separ.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
+        {{- if .Values.azureKeyVault.enabled }}
+        azure.workload.identity/use: "true"
+        {{- end }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -116,9 +119,22 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.azureKeyVault.enabled }}
+            - name: secrets-store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.azureKeyVault.enabled }}
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "separ.fullname" . }}-secrets
+        {{- end }}
       {{- with .Values.separ.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
