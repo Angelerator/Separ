@@ -1,5 +1,6 @@
 //! API request handlers
 
+pub mod auth;
 pub mod authz;
 pub mod health;
 pub mod identity;

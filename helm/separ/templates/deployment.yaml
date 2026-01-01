@@ -53,12 +53,32 @@ spec:
             - configMapRef:
                 name: {{ include "separ.fullname" . }}-config
           env:
-            - name: YEKTA__DATABASE__URL
+            # Database URL
+            {{- if .Values.externalDatabase }}
+            - name: SEPAR__DATABASE__HOST
+              value: {{ .Values.externalDatabase.host | quote }}
+            - name: SEPAR__DATABASE__PORT
+              value: {{ .Values.externalDatabase.port | default 5432 | quote }}
+            - name: SEPAR__DATABASE__DATABASE
+              value: {{ .Values.externalDatabase.database | quote }}
+            - name: SEPAR__DATABASE__USERNAME
+              value: {{ .Values.externalDatabase.username | quote }}
+            - name: SEPAR__DATABASE__SSL_MODE
+              value: {{ .Values.externalDatabase.sslMode | default "require" | quote }}
+            - name: SEPAR__DATABASE__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabase.existingSecret }}
+                  key: {{ .Values.externalDatabase.passwordKey }}
+            {{- else }}
+            - name: SEPAR__DATABASE__URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "separ.fullname" . }}-secrets
                   key: database-url
-            - name: YEKTA__SPICEDB__TOKEN
+            {{- end }}
+            # SpiceDB Token
+            - name: SEPAR__SPICEDB__TOKEN
               valueFrom:
                 secretKeyRef:
                   {{- if .Values.spicedb.secrets.existingPresharedKeySecret }}
@@ -68,7 +88,11 @@ spec:
                   name: {{ include "separ.fullname" . }}-secrets
                   key: spicedb-preshared-key
                   {{- end }}
-            - name: YEKTA__JWT__SECRET
+            # SpiceDB Endpoint
+            - name: SEPAR__SPICEDB__ENDPOINT
+              value: "http://{{ include "separ.fullname" . }}-spicedb:{{ .Values.spicedb.service.grpcPort }}"
+            # JWT Secret
+            - name: SEPAR__JWT__SECRET
               valueFrom:
                 secretKeyRef:
                   {{- if .Values.separ.secrets.existingJwtSecret }}
@@ -78,8 +102,19 @@ spec:
                   name: {{ include "separ.fullname" . }}-secrets
                   key: jwt-secret
                   {{- end }}
+            # JWT Configuration
+            - name: SEPAR__JWT__ISSUER
+              value: {{ .Values.separ.config.jwt.issuer | quote }}
+            - name: SEPAR__JWT__ACCESS_TOKEN_EXPIRY_SECS
+              value: {{ .Values.separ.config.jwt.accessTokenExpirySecs | quote }}
           resources:
             {{- toYaml .Values.separ.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
       {{- with .Values.separ.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -92,4 +127,3 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-

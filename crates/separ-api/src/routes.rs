@@ -35,6 +35,8 @@ fn api_v1_routes(state: AppState) -> Router {
         .nest("/tenants", tenant_routes(state.clone()))
         // Authorization endpoints
         .nest("/authz", authz_routes(state.clone()))
+        // Authentication validation (for external apps like Tavana)
+        .nest("/auth", auth_routes(state.clone()))
         // Identity provider management
         .nest("/identity", identity_routes(state.clone()))
         // Placeholder routes (to be implemented)
@@ -44,6 +46,14 @@ fn api_v1_routes(state: AppState) -> Router {
         .nest("/oauth", placeholder_routes())
         .nest("/sync", placeholder_routes())
         .nest("/scim/v2", placeholder_routes())
+}
+
+/// Authentication validation routes
+fn auth_routes(state: AppState) -> Router {
+    Router::new()
+        .route("/validate", post(handlers::auth::validate_credentials))
+        .route("/validate-token", post(handlers::auth::validate_token))
+        .with_state(state)
 }
 
 /// Tenant CRUD routes

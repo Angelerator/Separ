@@ -80,9 +80,9 @@ impl Settings {
                 config::File::with_name("config/local")
                     .required(false),
             )
-            // Load from environment variables with YEKTA_ prefix
+            // Load from environment variables with SEPAR_ prefix
             .add_source(
-                config::Environment::with_prefix("YEKTA")
+                config::Environment::with_prefix("SEPAR")
                     .separator("__")
                     .try_parsing(true),
             )
