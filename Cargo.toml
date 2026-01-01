@@ -83,3 +83,6 @@ separ-identity = { path = "crates/separ-identity" }
 separ-proxy = { path = "crates/separ-proxy" }
 separ-api = { path = "crates/separ-api" }
 
+# Pin home crate to avoid edition2024 requirement (affects sqlx-postgres)
+home = "0.5.9"
+
