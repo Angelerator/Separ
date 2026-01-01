@@ -89,8 +89,10 @@ SpiceDB endpoint
 {{- define "separ.spicedbEndpoint" -}}
 {{- if .Values.spicedb.enabled }}
 {{ include "separ.fullname" . }}-spicedb:{{ .Values.spicedb.service.grpcPort }}
-{{- else }}
+{{- else if .Values.externalSpicedb }}
 {{- .Values.externalSpicedb.endpoint }}
+{{- else }}
+localhost:50051
 {{- end }}
 {{- end }}
 
