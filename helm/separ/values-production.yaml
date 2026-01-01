@@ -1,16 +1,17 @@
-# Separ Authorization Platform - Production Values
+# Separ Authorization Platform - Production Values Example
 # ============================================================================
-# Use this file for customer deployments in restricted networks
+# Copy this file and customize for your environment.
+# DO NOT commit actual secrets or customer-specific values to the repository.
 # ============================================================================
 
 # =============================================================================
 # Global Configuration
 # =============================================================================
 global:
-  # Use Angelerator Docker Hub images (for restricted networks)
-  imageRegistry: "docker.io"
+  # Set to your private container registry
+  imageRegistry: ""  # e.g., "myregistry.azurecr.io"
   imagePullSecrets:
-    - name: angelerator-registry
+    - name: registry-credentials
 
 # =============================================================================
 # Separ API Server
@@ -19,16 +20,14 @@ separ:
   replicaCount: 3
   
   image:
-    # Angelerator Docker Hub repository
-    repository: angelerator/separ
-    tag: "v1.0.0"  # Set to deployed version
+    repository: separ
+    tag: ""  # Set to deployed version, e.g., "v1.0.0"
     pullPolicy: IfNotPresent
   
   service:
     type: ClusterIP
     port: 8080
   
-  # No ingress - internal only
   ingress:
     enabled: false
   
@@ -50,13 +49,12 @@ separ:
     server:
       host: "0.0.0.0"
       port: 8080
-    
     jwt:
       issuer: "separ"
       accessTokenExpirySecs: 3600
       refreshTokenExpirySecs: 2592000
   
-  # Use Kubernetes secrets
+  # Reference Kubernetes secrets - DO NOT put actual secrets here
   secrets:
     existingJwtSecret: "separ-secrets"
     jwtSecretKey: "jwt-secret"
@@ -69,7 +67,7 @@ spicedb:
   replicaCount: 3
   
   image:
-    repository: authzed/spicedb
+    repository: spicedb  # Or "authzed/spicedb" for public registry
     tag: "v1.33.0"
     pullPolicy: IfNotPresent
   
@@ -86,19 +84,29 @@ spicedb:
     presharedKeySecretKey: "spicedb-preshared-key"
 
 # =============================================================================
-# PostgreSQL - Use Azure Database for PostgreSQL
+# PostgreSQL - Use Managed Database Service
 # =============================================================================
 postgresql:
   # Disable bundled PostgreSQL - use managed database
   enabled: false
 
-# External PostgreSQL connection
+# External PostgreSQL connection (for Separ metadata)
+# Set actual values during deployment, NOT in this file
 externalDatabase:
-  host: "separ-db.postgres.database.azure.com"
+  host: ""  # Set during deployment
   port: 5432
   database: "separ"
-  username: "separ"
-  # Use Kubernetes secret
+  username: ""  # Set during deployment
+  existingSecret: "separ-secrets"
+  passwordKey: "postgres-password"
+  sslMode: "require"
+
+# External PostgreSQL for SpiceDB (can be same server, different database)
+externalSpicedbDatabase:
+  host: ""  # Set during deployment
+  port: 5432
+  database: "spicedb"
+  username: ""  # Set during deployment
   existingSecret: "separ-secrets"
   passwordKey: "postgres-password"
   sslMode: "require"
@@ -110,17 +118,16 @@ networkPolicy:
   enabled: true
   
   # Only allow access from approved namespaces
-  allowedNamespaces:
-    - name: tavana
-    # Add more approved app namespaces here
+  allowedNamespaces: []
+  # - name: my-app-namespace
 
 # =============================================================================
-# Service Account with Azure Workload Identity
+# Service Account
 # =============================================================================
 serviceAccount:
   create: true
-  annotations:
-    azure.workload.identity/client-id: ""  # Set during deployment
+  annotations: {}
+  # For cloud-specific identity federation, add annotations during deployment
   name: "separ"
 
 # =============================================================================
@@ -147,7 +154,6 @@ securityContext:
 metrics:
   enabled: true
   serviceMonitor:
-    enabled: true
-    namespace: "monitoring"
+    enabled: false
+    namespace: ""
     interval: 30s
-
