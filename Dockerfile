@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/separ-server /app/separ
+COPY --from=builder /app/target/release/separ /app/separ
 
 # Copy config
 COPY config/default.toml /app/config/default.toml
