@@ -33,6 +33,8 @@ fn api_v1_routes(state: AppState) -> Router {
     Router::new()
         // Tenant management
         .nest("/tenants", tenant_routes(state.clone()))
+        // User management
+        .nest("/users", user_routes(state.clone()))
         // Authorization endpoints
         .nest("/authz", authz_routes(state.clone()))
         // Authentication validation (for external apps like Tavana)
@@ -42,7 +44,6 @@ fn api_v1_routes(state: AppState) -> Router {
         // Placeholder routes (to be implemented)
         .nest("/workspaces", placeholder_routes())
         .nest("/applications", placeholder_routes())
-        .nest("/users", placeholder_routes())
         .nest("/oauth", placeholder_routes())
         .nest("/sync", placeholder_routes())
         .nest("/scim/v2", placeholder_routes())
@@ -79,6 +80,19 @@ fn authz_routes(state: AppState) -> Router {
         )
         .route("/lookup/resources", post(handlers::authz::lookup_resources))
         .route("/lookup/subjects", post(handlers::authz::lookup_subjects))
+        .with_state(state)
+}
+
+/// User management routes
+fn user_routes(state: AppState) -> Router {
+    Router::new()
+        .route("/", post(handlers::users::create_user))
+        .route("/", get(handlers::users::list_users))
+        .route("/{id}", get(handlers::users::get_user))
+        .route("/{id}", delete(handlers::users::delete_user))
+        .route("/{id}/roles", get(handlers::users::get_roles))
+        .route("/{id}/roles", post(handlers::users::assign_role))
+        .route("/{id}/roles", delete(handlers::users::remove_role))
         .with_state(state)
 }
 
