@@ -1,19 +1,27 @@
 # Separ Default Configuration
+# 
+# ⚠️  WARNING: This file contains PLACEHOLDER values for LOCAL DEVELOPMENT ONLY!
+# ⚠️  NEVER use these values in production!
+# ⚠️  In production, use environment variables or Azure Key Vault for secrets.
 
 [server]
 host = "0.0.0.0"
 port = 8080
 
 [database]
+# ⚠️  PLACEHOLDER - Use SEPAR__DATABASE__URL env var in production
 url = "postgres://separ:separ@localhost:5433/separ"
 max_connections = 10
 
 [spicedb]
 endpoint = "http://localhost:50051"
-token = "supersecretkey"
+# ⚠️  PLACEHOLDER - Use SEPAR__SPICEDB__TOKEN env var in production
+token = "local-dev-only-not-for-production"
 
 [jwt]
-secret = "change-me-in-production-use-a-long-random-string"
+# ⚠️  PLACEHOLDER - Use SEPAR__JWT__SECRET env var in production
+# Production secrets should be 64+ bytes of cryptographically random data
+secret = "local-dev-only-not-for-production-generate-strong-secret"
 issuer = "separ"
 access_token_expiry_secs = 3600
 refresh_token_expiry_secs = 604800
