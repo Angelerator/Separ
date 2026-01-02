@@ -68,9 +68,14 @@ separ:
       accessTokenExpirySecs: 3600
       refreshTokenExpirySecs: 2592000
   
-  # Secrets (use external secret management in production)
+  # Secrets configuration
+  # ⚠️  WARNING: Default values are PLACEHOLDERS for development only!
+  # ⚠️  For production, use existingJwtSecret to reference a pre-created Kubernetes Secret
+  # ⚠️  or Azure Key Vault CSI driver (see azureKeyVault section below)
   secrets:
-    jwtSecret: "change-this-in-production"
+    # DO NOT use in production - generate 64+ bytes of random data
+    jwtSecret: "PLACEHOLDER-DO-NOT-USE-IN-PRODUCTION"
+    # Reference existing secret instead of inline value (recommended for production)
     existingJwtSecret: ""
     jwtSecretKey: "jwt-secret"
   
@@ -119,8 +124,13 @@ spicedb:
     datastoreEngine: postgres
     datastoreConnUri: ""
   
+  # Secrets configuration
+  # ⚠️  WARNING: Default values are PLACEHOLDERS for development only!
+  # ⚠️  For production, use existingPresharedKeySecret to reference a pre-created Kubernetes Secret
   secrets:
-    presharedKey: "change-this-in-production"
+    # DO NOT use in production - generate 64+ bytes of random data
+    presharedKey: "PLACEHOLDER-DO-NOT-USE-IN-PRODUCTION"
+    # Reference existing secret instead of inline value (recommended for production)
     existingPresharedKeySecret: ""
     presharedKeySecretKey: "preshared-key"
 
