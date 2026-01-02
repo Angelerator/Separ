@@ -3,27 +3,30 @@ FROM rust:1.84-bookworm AS builder
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies for TLS and protobuf
 RUN apt-get update && apt-get install -y \
     protobuf-compiler \
+    pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-# Build release binary (use --locked to respect Cargo.lock exactly)
+# Build release binary with TLS support
 RUN cargo build --release --locked --package separ-server
 
 # Runtime stage
 FROM debian:bookworm-slim
 
-# Install runtime dependencies
+# Install runtime dependencies including CA certificates for TLS
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
 
 WORKDIR /app
 
@@ -44,9 +47,13 @@ USER separ
 # Expose port
 EXPOSE 8080
 
+# Environment variables for production
+ENV RUST_LOG=info
+ENV RUST_BACKTRACE=0
+
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health/live || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Run server
 ENTRYPOINT ["/app/separ"]
