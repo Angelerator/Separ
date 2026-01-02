@@ -127,10 +127,9 @@ where
         };
 
         // Sync users
-        let synced_users = if full_sync || last_sync.is_none() {
-            provider.sync_users().await
-        } else {
-            provider.sync_users_incremental(last_sync.unwrap()).await
+        let synced_users = match (full_sync, last_sync) {
+            (true, _) | (_, None) => provider.sync_users().await,
+            (false, Some(since)) => provider.sync_users_incremental(since).await,
         };
 
         match synced_users {
@@ -169,10 +168,9 @@ where
         }
 
         // Sync groups
-        let synced_groups = if full_sync || last_sync.is_none() {
-            provider.sync_groups().await
-        } else {
-            provider.sync_groups_incremental(last_sync.unwrap()).await
+        let synced_groups = match (full_sync, last_sync) {
+            (true, _) | (_, None) => provider.sync_groups().await,
+            (false, Some(since)) => provider.sync_groups_incremental(since).await,
         };
 
         match synced_groups {
