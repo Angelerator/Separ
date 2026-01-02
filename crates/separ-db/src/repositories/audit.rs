@@ -4,11 +4,10 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use tracing::instrument;
 
-use separ_core::{
-    Result, AuditEvent, AuditFilter, AuditRepository, TenantId, SeparError,
-};
+use separ_core::{AuditEvent, AuditFilter, AuditRepository, Result, TenantId};
 
 /// PostgreSQL implementation of AuditRepository
+#[allow(dead_code)]
 pub struct PgAuditRepository {
     pool: PgPool,
 }

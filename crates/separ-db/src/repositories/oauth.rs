@@ -5,10 +5,11 @@ use sqlx::PgPool;
 use tracing::instrument;
 
 use separ_core::{
-    Result, OAuthProvider, OAuthProviderId, OAuthProviderRepository, TenantId, SeparError,
+    OAuthProvider, OAuthProviderId, OAuthProviderRepository, Result, SeparError, TenantId,
 };
 
 /// PostgreSQL implementation of OAuthProviderRepository
+#[allow(dead_code)]
 pub struct PgOAuthProviderRepository {
     pool: PgPool,
 }
@@ -23,7 +24,9 @@ impl PgOAuthProviderRepository {
 impl OAuthProviderRepository for PgOAuthProviderRepository {
     #[instrument(skip(self, _provider))]
     async fn create(&self, _provider: &OAuthProvider) -> Result<OAuthProvider> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
@@ -38,7 +41,9 @@ impl OAuthProviderRepository for PgOAuthProviderRepository {
 
     #[instrument(skip(self, _provider))]
     async fn update(&self, _provider: &OAuthProvider) -> Result<OAuthProvider> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]

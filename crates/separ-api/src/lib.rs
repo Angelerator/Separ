@@ -1,5 +1,8 @@
 //! Separ API - HTTP API layer for the authorization platform
 
+#![allow(clippy::type_complexity)]
+#![allow(unused_variables)]
+
 pub mod dto;
 pub mod handlers;
 pub mod middleware;

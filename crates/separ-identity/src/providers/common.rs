@@ -5,9 +5,8 @@ use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use separ_core::{Result, SeparError};
 
@@ -24,10 +23,10 @@ impl HttpClient {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| SeparError::Internal { 
-                message: format!("Failed to create HTTP client: {}", e) 
+            .map_err(|e| SeparError::Internal {
+                message: format!("Failed to create HTTP client: {}", e),
             })?;
-        
+
         Ok(Self {
             client,
             max_retries,
@@ -45,7 +44,7 @@ impl HttpClient {
         request_builder: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response> {
         let mut last_error = None;
-        
+
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
                 let delay = self.retry_delay_ms * 2u64.pow(attempt - 1);
@@ -56,19 +55,22 @@ impl HttpClient {
                 Some(rb) => {
                     match rb.send().await {
                         Ok(response) => {
-                            if response.status().is_success() || response.status().is_redirection() {
+                            if response.status().is_success() || response.status().is_redirection()
+                            {
                                 return Ok(response);
                             }
-                            
+
                             // Don't retry client errors (4xx) except 429
-                            if response.status().is_client_error() && response.status().as_u16() != 429 {
+                            if response.status().is_client_error()
+                                && response.status().as_u16() != 429
+                            {
                                 let status = response.status();
                                 let body = response.text().await.unwrap_or_default();
                                 return Err(SeparError::Internal {
                                     message: format!("HTTP {} - {}", status, body),
                                 });
                             }
-                            
+
                             last_error = Some(format!("HTTP {}", response.status()));
                         }
                         Err(e) => {
@@ -113,11 +115,7 @@ impl JwksCache {
         }
     }
 
-    pub async fn get_or_fetch(
-        &self,
-        jwks_uri: &str,
-        client: &HttpClient,
-    ) -> Result<JwkSet> {
+    pub async fn get_or_fetch(&self, jwks_uri: &str, client: &HttpClient) -> Result<JwkSet> {
         // Check cache first
         {
             let cache = self.keys.read().await;
@@ -135,12 +133,9 @@ impl JwksCache {
             .execute_with_retry(client.inner().get(jwks_uri))
             .await?;
 
-        let jwks: JwkSet = response
-            .json()
-            .await
-            .map_err(|e| SeparError::Internal {
-                message: format!("Failed to parse JWKS: {}", e),
-            })?;
+        let jwks: JwkSet = response.json().await.map_err(|e| SeparError::Internal {
+            message: format!("Failed to parse JWKS: {}", e),
+        })?;
 
         // Update cache
         {
@@ -261,12 +256,10 @@ impl OidcDiscovery {
             "{}/.well-known/openid-configuration",
             issuer.trim_end_matches('/')
         );
-        
+
         debug!("Fetching OIDC discovery from {}", url);
-        
-        let response = client
-            .execute_with_retry(client.inner().get(&url))
-            .await?;
+
+        let response = client.execute_with_retry(client.inner().get(&url)).await?;
 
         response.json().await.map_err(|e| SeparError::Internal {
             message: format!("Failed to parse OIDC discovery: {}", e),
@@ -369,11 +362,10 @@ pub fn validate_jwt<T: for<'de> Deserialize<'de>>(
     decoding_key: &DecodingKey,
     validation: &Validation,
 ) -> Result<T> {
-    let token_data = decode::<T>(token, decoding_key, validation).map_err(|e| {
-        SeparError::AuthError {
+    let token_data =
+        decode::<T>(token, decoding_key, validation).map_err(|e| SeparError::AuthError {
             message: format!("Token validation failed: {}", e),
-        }
-    })?;
+        })?;
     Ok(token_data.claims)
 }
 
@@ -382,7 +374,7 @@ pub fn extract_jwt_kid(token: &str) -> Result<String> {
     let header = decode_header(token).map_err(|e| SeparError::AuthError {
         message: format!("Failed to decode JWT header: {}", e),
     })?;
-    
+
     header.kid.ok_or_else(|| SeparError::AuthError {
         message: "JWT header missing 'kid' claim".to_string(),
     })
@@ -430,10 +422,7 @@ pub struct PaginatedResponse<T> {
 }
 
 /// Helper to collect all pages
-pub async fn collect_all_pages<T, F, Fut>(
-    fetch_page: F,
-    page_size: u32,
-) -> Result<Vec<T>>
+pub async fn collect_all_pages<T, F, Fut>(fetch_page: F, page_size: u32) -> Result<Vec<T>>
 where
     F: Fn(PaginatedRequest) -> Fut,
     Fut: std::future::Future<Output = Result<PaginatedResponse<T>>>,
@@ -462,4 +451,3 @@ where
 
     Ok(all_items)
 }
-

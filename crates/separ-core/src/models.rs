@@ -436,4 +436,3 @@ pub enum AuditResult {
     Denied,
     Error,
 }
-

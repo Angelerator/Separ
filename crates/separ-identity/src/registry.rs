@@ -11,11 +11,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument, warn};
 
-use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId,
-    Result, SeparError,
-};
+use separ_core::{identity::*, IdentityProviderId, Result, SeparError, TenantId};
 
 #[cfg(feature = "azure")]
 use crate::providers::azure::AzureAdProvider;
@@ -34,10 +30,10 @@ pub struct ProviderRegistry {
     /// Providers indexed by their ID
     sync_providers: RwLock<HashMap<IdentityProviderId, Arc<dyn IdentitySync>>>,
     auth_providers: RwLock<HashMap<IdentityProviderId, Arc<dyn IdentityAuth>>>,
-    
+
     /// Provider configs indexed by tenant
     configs_by_tenant: RwLock<HashMap<TenantId, Vec<IdentityProviderConfig>>>,
-    
+
     /// Domain to provider mapping for automatic detection
     domain_mapping: RwLock<HashMap<String, IdentityProviderId>>,
 }
@@ -72,36 +68,60 @@ impl ProviderRegistry {
             ProviderType::AzureAd => {
                 let provider = AzureAdProvider::new(&config)?;
                 let provider = Arc::new(provider);
-                
-                self.sync_providers.write().await.insert(config.id, provider.clone());
-                self.auth_providers.write().await.insert(config.id, provider);
+
+                self.sync_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider.clone());
+                self.auth_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider);
             }
 
             #[cfg(feature = "okta")]
             ProviderType::Okta => {
                 let provider = OktaProvider::new(&config).await?;
                 let provider = Arc::new(provider);
-                
-                self.sync_providers.write().await.insert(config.id, provider.clone());
-                self.auth_providers.write().await.insert(config.id, provider);
+
+                self.sync_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider.clone());
+                self.auth_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider);
             }
 
             #[cfg(feature = "google")]
             ProviderType::Google => {
                 let provider = GoogleProvider::new(&config).await?;
                 let provider = Arc::new(provider);
-                
-                self.sync_providers.write().await.insert(config.id, provider.clone());
-                self.auth_providers.write().await.insert(config.id, provider);
+
+                self.sync_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider.clone());
+                self.auth_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider);
             }
 
             #[cfg(feature = "oidc")]
             ProviderType::GenericOidc => {
                 let provider = GenericOidcProvider::new(&config).await?;
                 let provider = Arc::new(provider);
-                
-                self.sync_providers.write().await.insert(config.id, provider.clone());
-                self.auth_providers.write().await.insert(config.id, provider);
+
+                self.sync_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider.clone());
+                self.auth_providers
+                    .write()
+                    .await
+                    .insert(config.id, provider);
             }
 
             _ => {
@@ -212,22 +232,21 @@ impl ProviderRegistry {
     }
 
     /// Find provider by domain (for automatic detection)
-    pub async fn find_provider_by_domain(
-        &self,
-        domain: &str,
-    ) -> Option<Arc<dyn IdentityAuth>> {
+    pub async fn find_provider_by_domain(&self, domain: &str) -> Option<Arc<dyn IdentityAuth>> {
         let domain_lower = domain.to_lowercase();
-        
-        let provider_id = self.domain_mapping.read().await.get(&domain_lower).cloned()?;
+
+        let provider_id = self
+            .domain_mapping
+            .read()
+            .await
+            .get(&domain_lower)
+            .cloned()?;
         self.get_auth_provider(provider_id).await
     }
 
     /// Find provider by email domain
-    pub async fn find_provider_by_email(
-        &self,
-        email: &str,
-    ) -> Option<Arc<dyn IdentityAuth>> {
-        let domain = email.split('@').last()?;
+    pub async fn find_provider_by_email(&self, email: &str) -> Option<Arc<dyn IdentityAuth>> {
+        let domain = email.split('@').next_back()?;
         self.find_provider_by_domain(domain).await
     }
 
@@ -277,10 +296,7 @@ impl ProviderRegistry {
     }
 
     /// Get provider configurations for a tenant
-    pub async fn get_configs_for_tenant(
-        &self,
-        tenant_id: TenantId,
-    ) -> Vec<IdentityProviderConfig> {
+    pub async fn get_configs_for_tenant(&self, tenant_id: TenantId) -> Vec<IdentityProviderConfig> {
         self.configs_by_tenant
             .read()
             .await
@@ -320,11 +336,7 @@ pub struct ProviderBuilder {
 }
 
 impl ProviderBuilder {
-    pub fn new(
-        tenant_id: TenantId,
-        name: impl Into<String>,
-        provider_type: ProviderType,
-    ) -> Self {
+    pub fn new(tenant_id: TenantId, name: impl Into<String>, provider_type: ProviderType) -> Self {
         Self {
             config: IdentityProviderConfig {
                 id: IdentityProviderId::new(),
@@ -389,4 +401,3 @@ impl ProviderBuilder {
         Ok(config)
     }
 }
-

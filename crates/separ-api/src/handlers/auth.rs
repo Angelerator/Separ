@@ -201,11 +201,19 @@ async fn validate_jwt(
         email: claims["email"].as_str().map(String::from),
         groups: claims["groups"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
         permissions: claims["scopes"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_else(|| vec!["read".to_string(), "query".to_string()]),
         expires_at: exp,
         attributes: None,
@@ -232,7 +240,10 @@ async fn validate_personal_access_token(
     // TODO: Look up PAT in database
     // For now, return mock response
 
-    let tenant_id = request.tenant_hint.clone().unwrap_or_else(|| "default".to_string());
+    let tenant_id = request
+        .tenant_hint
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     warn!("PAT validation not fully implemented - using mock response");
 
@@ -270,7 +281,10 @@ async fn validate_service_account_key(
     // TODO: Look up service account key in database
     // For now, return mock response
 
-    let tenant_id = request.tenant_hint.clone().unwrap_or_else(|| "default".to_string());
+    let tenant_id = request
+        .tenant_hint
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     warn!("Service account key validation not fully implemented - using mock response");
 
@@ -308,7 +322,10 @@ async fn validate_api_key(
     // TODO: Look up API key in database
     // For now, return mock response
 
-    let tenant_id = request.tenant_hint.clone().unwrap_or_else(|| "default".to_string());
+    let tenant_id = request
+        .tenant_hint
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     warn!("API key validation not fully implemented - using mock response");
 
@@ -337,7 +354,10 @@ async fn validate_password(
     // 2. Verify password hash
     // 3. Return identity if valid
 
-    let tenant_id = request.tenant_hint.clone().unwrap_or_else(|| "default".to_string());
+    let tenant_id = request
+        .tenant_hint
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     warn!("Password validation not fully implemented - using mock response");
 
@@ -433,7 +453,10 @@ pub async fn validate_token(
 
     // Extract claims
     let user_id = claims["sub"].as_str().unwrap_or("unknown").to_string();
-    let tenant_id = claims["tenant_id"].as_str().unwrap_or("default").to_string();
+    let tenant_id = claims["tenant_id"]
+        .as_str()
+        .unwrap_or("default")
+        .to_string();
     let exp = claims["exp"].as_i64();
 
     // Check expiration
@@ -452,18 +475,29 @@ pub async fn validate_token(
 
     Ok(Json(ValidateResponse {
         user_id: user_id.clone(),
-        principal_type: claims["principal_type"].as_str().unwrap_or("user").to_string(),
+        principal_type: claims["principal_type"]
+            .as_str()
+            .unwrap_or("user")
+            .to_string(),
         tenant_id,
         tenant_name: claims["tenant_name"].as_str().map(String::from),
         display_name: claims["name"].as_str().map(String::from),
         email: claims["email"].as_str().map(String::from),
         groups: claims["groups"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
         permissions: claims["scopes"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_else(|| vec!["read".to_string(), "query".to_string()]),
         expires_at: exp,
         attributes: None,
@@ -489,4 +523,3 @@ mod tests {
         assert_eq!(json["typ"], "JWT");
     }
 }
-

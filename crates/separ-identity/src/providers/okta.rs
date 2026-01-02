@@ -13,11 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
-use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId,
-    Result, SeparError,
-};
+use separ_core::{identity::*, IdentityProviderId, Result, SeparError, TenantId};
 
 use super::common::*;
 
@@ -37,15 +33,14 @@ impl OktaProvider {
     pub async fn new(provider_config: &IdentityProviderConfig) -> Result<Self> {
         let config = match &provider_config.config {
             ProviderConfigDetails::Okta(c) => c.clone(),
-            _ => return Err(SeparError::InvalidInput {
-                message: "Expected Okta configuration".to_string(),
-            }),
+            _ => {
+                return Err(SeparError::InvalidInput {
+                    message: "Expected Okta configuration".to_string(),
+                })
+            }
         };
 
-        let http_client = HttpClient::new(
-            provider_config.sync_settings.max_retries,
-            1000,
-        )?;
+        let http_client = HttpClient::new(provider_config.sync_settings.max_retries, 1000)?;
 
         // Fetch OIDC discovery
         let issuer = format!("https://{}", config.domain);
@@ -68,25 +63,22 @@ impl OktaProvider {
     }
 
     /// Make an authenticated request to Okta Management API
-    async fn api_request<T: for<'de> Deserialize<'de>>(
-        &self,
-        endpoint: &str,
-    ) -> Result<T> {
+    async fn api_request<T: for<'de> Deserialize<'de>>(&self, endpoint: &str) -> Result<T> {
         let url = format!("{}{}", self.api_base(), endpoint);
-        
-        let response = self.http_client
+
+        let response = self
+            .http_client
             .execute_with_retry(
-                self.http_client.inner()
+                self.http_client
+                    .inner()
                     .get(&url)
                     .header("Authorization", format!("SSWS {}", self.config.api_token))
-                    .header("Accept", "application/json")
+                    .header("Accept", "application/json"),
             )
             .await?;
 
-        response.json().await.map_err(|e| {
-            SeparError::Internal {
-                message: format!("Failed to parse Okta response: {}", e),
-            }
+        response.json().await.map_err(|e| SeparError::Internal {
+            message: format!("Failed to parse Okta response: {}", e),
         })
     }
 
@@ -98,18 +90,20 @@ impl OktaProvider {
     ) -> Result<Vec<T>> {
         let mut all_items = Vec::new();
         let mut url = format!("{}{}", self.api_base(), endpoint);
-        
+
         if let Some(f) = filter {
             url = format!("{}?filter={}", url, urlencoding::encode(f));
         }
 
         loop {
-            let response = self.http_client
+            let response = self
+                .http_client
                 .execute_with_retry(
-                    self.http_client.inner()
+                    self.http_client
+                        .inner()
                         .get(&url)
                         .header("Authorization", format!("SSWS {}", self.config.api_token))
-                        .header("Accept", "application/json")
+                        .header("Accept", "application/json"),
                 )
                 .await?;
 
@@ -118,12 +112,10 @@ impl OktaProvider {
                 .headers()
                 .get("link")
                 .and_then(|h| h.to_str().ok())
-                .and_then(|s| parse_okta_link_header(s));
+                .and_then(parse_okta_link_header);
 
-            let items: Vec<T> = response.json().await.map_err(|e| {
-                SeparError::Internal {
-                    message: format!("Failed to parse Okta response: {}", e),
-                }
+            let items: Vec<T> = response.json().await.map_err(|e| SeparError::Internal {
+                message: format!("Failed to parse Okta response: {}", e),
             })?;
 
             all_items.extend(items);
@@ -140,7 +132,7 @@ impl OktaProvider {
     /// Convert Okta user to SyncedUser
     fn okta_user_to_synced(&self, user: &OktaUser) -> SyncedUser {
         let profile = &user.profile;
-        
+
         SyncedUser {
             external_id: user.id.clone(),
             email: profile.email.clone().unwrap_or_default(),
@@ -148,7 +140,9 @@ impl OktaProvider {
                 "{} {}",
                 profile.first_name.as_deref().unwrap_or(""),
                 profile.last_name.as_deref().unwrap_or("")
-            ).trim().to_string(),
+            )
+            .trim()
+            .to_string(),
             given_name: profile.first_name.clone(),
             family_name: profile.last_name.clone(),
             picture_url: None,
@@ -218,11 +212,10 @@ impl IdentitySync for OktaProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_users(&self) -> Result<Vec<SyncedUser>> {
         info!("Starting full user sync from Okta");
-        
-        let okta_users: Vec<OktaUser> = self.api_request_paginated(
-            "/users",
-            self.config.user_filter.as_deref(),
-        ).await?;
+
+        let okta_users: Vec<OktaUser> = self
+            .api_request_paginated("/users", self.config.user_filter.as_deref())
+            .await?;
 
         info!("Fetched {} users from Okta", okta_users.len());
 
@@ -251,16 +244,13 @@ impl IdentitySync for OktaProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_users_incremental(&self, since: DateTime<Utc>) -> Result<Vec<SyncedUser>> {
         info!("Starting incremental user sync from Okta since {}", since);
-        
+
         let filter = format!(
             "lastUpdated gt \"{}\"",
             since.format("%Y-%m-%dT%H:%M:%S%.3fZ")
         );
-        
-        let okta_users: Vec<OktaUser> = self.api_request_paginated(
-            "/users",
-            Some(&filter),
-        ).await?;
+
+        let okta_users: Vec<OktaUser> = self.api_request_paginated("/users", Some(&filter)).await?;
 
         info!("Fetched {} modified users from Okta", okta_users.len());
 
@@ -275,11 +265,10 @@ impl IdentitySync for OktaProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_groups(&self) -> Result<Vec<SyncedGroup>> {
         info!("Starting full group sync from Okta");
-        
-        let okta_groups: Vec<OktaGroup> = self.api_request_paginated(
-            "/groups",
-            self.config.group_filter.as_deref(),
-        ).await?;
+
+        let okta_groups: Vec<OktaGroup> = self
+            .api_request_paginated("/groups", self.config.group_filter.as_deref())
+            .await?;
 
         info!("Fetched {} groups from Okta", okta_groups.len());
 
@@ -290,10 +279,13 @@ impl IdentitySync for OktaProvider {
 
         // Fetch members for each group
         for (i, okta_group) in okta_groups.iter().enumerate() {
-            match self.api_request_paginated::<OktaUser>(
-                &format!("/groups/{}/users", okta_group.id),
-                None,
-            ).await {
+            match self
+                .api_request_paginated::<OktaUser>(
+                    &format!("/groups/{}/users", okta_group.id),
+                    None,
+                )
+                .await
+            {
                 Ok(members) => {
                     groups[i].members = members.iter().map(|m| m.id.clone()).collect();
                 }
@@ -309,16 +301,14 @@ impl IdentitySync for OktaProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_groups_incremental(&self, since: DateTime<Utc>) -> Result<Vec<SyncedGroup>> {
         info!("Starting incremental group sync from Okta since {}", since);
-        
+
         let filter = format!(
             "lastUpdated gt \"{}\"",
             since.format("%Y-%m-%dT%H:%M:%S%.3fZ")
         );
-        
-        let okta_groups: Vec<OktaGroup> = self.api_request_paginated(
-            "/groups",
-            Some(&filter),
-        ).await?;
+
+        let okta_groups: Vec<OktaGroup> =
+            self.api_request_paginated("/groups", Some(&filter)).await?;
 
         info!("Fetched {} modified groups from Okta", okta_groups.len());
 
@@ -332,7 +322,7 @@ impl IdentitySync for OktaProvider {
 
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_user(&self, external_id: &str) -> Result<Option<SyncedUser>> {
-        let result: std::result::Result<OktaUser, _> = 
+        let result: std::result::Result<OktaUser, _> =
             self.api_request(&format!("/users/{}", external_id)).await;
 
         match result {
@@ -349,7 +339,7 @@ impl IdentitySync for OktaProvider {
 
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_group(&self, external_id: &str) -> Result<Option<SyncedGroup>> {
-        let result: std::result::Result<OktaGroup, _> = 
+        let result: std::result::Result<OktaGroup, _> =
             self.api_request(&format!("/groups/{}", external_id)).await;
 
         match result {
@@ -366,10 +356,9 @@ impl IdentitySync for OktaProvider {
 
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_user_groups(&self, user_external_id: &str) -> Result<Vec<SyncedGroup>> {
-        let okta_groups: Vec<OktaGroup> = self.api_request_paginated(
-            &format!("/users/{}/groups", user_external_id),
-            None,
-        ).await?;
+        let okta_groups: Vec<OktaGroup> = self
+            .api_request_paginated(&format!("/users/{}/groups", user_external_id), None)
+            .await?;
 
         let groups = okta_groups
             .iter()
@@ -381,7 +370,7 @@ impl IdentitySync for OktaProvider {
 
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn test_connection(&self) -> Result<bool> {
-        let result: std::result::Result<Vec<OktaUser>, _> = 
+        let result: std::result::Result<Vec<OktaUser>, _> =
             self.api_request("/users?limit=1").await;
         Ok(result.is_ok())
     }
@@ -409,7 +398,8 @@ impl IdentityAuth for OktaProvider {
         let kid = extract_jwt_kid(token)?;
 
         // Get JWKS
-        let jwks = self.jwks_cache
+        let jwks = self
+            .jwks_cache
             .get_or_fetch(&self.jwks_uri(), &self.http_client)
             .await?;
 
@@ -419,7 +409,7 @@ impl IdentityAuth for OktaProvider {
         // Build validation
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[&self.issuer()]);
-        
+
         if !options.audiences.is_empty() {
             validation.set_audience(&options.audiences);
         } else {
@@ -446,10 +436,8 @@ impl IdentityAuth for OktaProvider {
             groups: claims.groups.clone().unwrap_or_default(),
             roles: vec![],
             scopes: claims.scp.clone().unwrap_or_default(),
-            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0)
-                .unwrap_or(Utc::now()),
-            expires_at: DateTime::from_timestamp(claims.exp, 0)
-                .unwrap_or(Utc::now()),
+            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0).unwrap_or(Utc::now()),
+            expires_at: DateTime::from_timestamp(claims.exp, 0).unwrap_or(Utc::now()),
             raw_claims: serde_json::to_value(&claims)
                 .map(|v| v.as_object().cloned().unwrap_or_default())
                 .unwrap_or_default()
@@ -467,7 +455,8 @@ impl IdentityAuth for OktaProvider {
         nonce: Option<&str>,
         redirect_uri: &str,
     ) -> Result<String> {
-        let auth_endpoint = self.discovery
+        let auth_endpoint = self
+            .discovery
             .as_ref()
             .map(|d| d.authorization_endpoint.clone())
             .unwrap_or_else(|| format!("https://{}/oauth2/v1/authorize", self.config.domain));
@@ -493,12 +482,9 @@ impl IdentityAuth for OktaProvider {
     }
 
     #[instrument(skip(self, code), fields(provider_id = %self.provider_id))]
-    async fn exchange_code(
-        &self,
-        code: &str,
-        redirect_uri: &str,
-    ) -> Result<TokenExchangeResult> {
-        let token_endpoint = self.discovery
+    async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<TokenExchangeResult> {
+        let token_endpoint = self
+            .discovery
             .as_ref()
             .map(|d| d.token_endpoint.clone())
             .unwrap_or_else(|| format!("https://{}/oauth2/v1/token", self.config.domain));
@@ -511,19 +497,15 @@ impl IdentityAuth for OktaProvider {
             ("grant_type", "authorization_code"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_endpoint)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_endpoint).form(&params))
             .await?;
 
-        let token_response: OktaTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: OktaTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         // Validate ID token if present
         let principal = if let Some(id_token) = &token_response.id_token {
@@ -541,11 +523,14 @@ impl IdentityAuth for OktaProvider {
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal,
@@ -554,7 +539,8 @@ impl IdentityAuth for OktaProvider {
 
     #[instrument(skip(self, refresh_token), fields(provider_id = %self.provider_id))]
     async fn refresh_token(&self, refresh_token: &str) -> Result<TokenExchangeResult> {
-        let token_endpoint = self.discovery
+        let token_endpoint = self
+            .discovery
             .as_ref()
             .map(|d| d.token_endpoint.clone())
             .unwrap_or_else(|| format!("https://{}/oauth2/v1/token", self.config.domain));
@@ -566,27 +552,26 @@ impl IdentityAuth for OktaProvider {
             ("grant_type", "refresh_token"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_endpoint)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_endpoint).form(&params))
             .await?;
 
-        let token_response: OktaTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: OktaTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal: None,
@@ -672,11 +657,10 @@ fn parse_okta_link_header(header: &str) -> Option<String> {
             if rel == "rel=\"next\"" {
                 let url = parts[0].trim();
                 if url.starts_with('<') && url.ends_with('>') {
-                    return Some(url[1..url.len()-1].to_string());
+                    return Some(url[1..url.len() - 1].to_string());
                 }
             }
         }
     }
     None
 }
-

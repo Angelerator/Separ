@@ -18,4 +18,3 @@ pub mod ldap;
 mod common;
 
 pub use common::*;
-

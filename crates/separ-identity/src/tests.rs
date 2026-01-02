@@ -1,13 +1,13 @@
 //! Unit tests for separ-identity
 
-use separ_core::{TenantId, IdentityProviderId};
-use separ_core::identity::{
-    ProviderType, ProviderFeatures, SyncSettings, SyncedUser, SyncedGroup, SyncedApp,
-    SyncedAppType, SyncResultStatus, SyncError, PrincipalType, AuthenticatedPrincipal,
-    AzureAdConfig, OktaConfig, GoogleConfig, OidcConfig, ClaimMappings,
-};
-use std::collections::HashMap;
 use chrono::Utc;
+use separ_core::identity::{
+    AuthenticatedPrincipal, AzureAdConfig, ClaimMappings, GoogleConfig, OidcConfig, OktaConfig,
+    PrincipalType, ProviderFeatures, ProviderType, SyncError, SyncResultStatus, SyncSettings,
+    SyncedApp, SyncedAppType, SyncedGroup, SyncedUser,
+};
+use separ_core::{IdentityProviderId, TenantId};
+use std::collections::HashMap;
 
 // =============================================================================
 // Provider Registry Tests
@@ -20,16 +20,18 @@ mod registry_tests {
 
     #[tokio::test]
     async fn test_registry_creation() {
-        let _registry = ProviderRegistry::new();
-        // Registry should be created successfully
-        assert!(true);
+        let registry = ProviderRegistry::new();
+        // Registry should be created successfully - check it has no providers initially
+        let tenant_id = TenantId::new();
+        let providers = registry.get_configs_for_tenant(tenant_id).await;
+        assert!(providers.is_empty());
     }
 
     #[tokio::test]
     async fn test_registry_get_providers_for_tenant() {
         let registry = ProviderRegistry::new();
         let tenant_id = TenantId::new();
-        
+
         // Get providers for a tenant with no providers
         let providers = registry.get_configs_for_tenant(tenant_id).await;
         assert!(providers.is_empty());
@@ -53,7 +55,7 @@ mod provider_type_tests {
             ProviderType::GenericOidc,
             ProviderType::Direct,
         ];
-        
+
         for provider_type in types {
             let json = serde_json::to_string(&provider_type).unwrap();
             let deserialized: ProviderType = serde_json::from_str(&json).unwrap();
@@ -94,10 +96,10 @@ mod data_model_tests {
             attributes: HashMap::new(),
             synced_at: Utc::now(),
         };
-        
+
         let json = serde_json::to_string(&user).unwrap();
         let deserialized: SyncedUser = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(user.email, deserialized.email);
         assert_eq!(user.display_name, deserialized.display_name);
         assert!(deserialized.active);
@@ -116,10 +118,10 @@ mod data_model_tests {
             attributes: HashMap::new(),
             synced_at: Utc::now(),
         };
-        
+
         let json = serde_json::to_string(&group).unwrap();
         let deserialized: SyncedGroup = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(group.name, deserialized.name);
         assert_eq!(group.members.len(), deserialized.members.len());
     }
@@ -136,10 +138,10 @@ mod data_model_tests {
             attributes: HashMap::new(),
             synced_at: Utc::now(),
         };
-        
+
         let json = serde_json::to_string(&app).unwrap();
         let deserialized: SyncedApp = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(app.name, deserialized.name);
         assert!(deserialized.enabled);
     }
@@ -151,7 +153,7 @@ mod data_model_tests {
             SyncedAppType::ServicePrincipal,
             SyncedAppType::ManagedIdentity,
         ];
-        
+
         for app_type in types {
             let json = serde_json::to_string(&app_type).unwrap();
             let deserialized: SyncedAppType = serde_json::from_str(&json).unwrap();
@@ -171,7 +173,7 @@ mod config_tests {
     #[test]
     fn test_provider_features_default() {
         let features = ProviderFeatures::default();
-        
+
         // Default should have all features disabled
         assert!(!features.sync_users);
         assert!(!features.sync_groups);
@@ -188,7 +190,7 @@ mod config_tests {
             jit_provisioning: true,
             resolve_nested_groups: true,
         };
-        
+
         assert!(features.sync_users);
         assert!(features.sync_groups);
         assert!(features.authentication);
@@ -197,7 +199,7 @@ mod config_tests {
     #[test]
     fn test_sync_settings_default() {
         let settings = SyncSettings::default();
-        
+
         // Default should have reasonable values
         assert!(settings.interval_secs.is_some());
         assert!(settings.full_sync_enabled);
@@ -208,7 +210,7 @@ mod config_tests {
     #[test]
     fn test_azure_ad_config_default() {
         let config = AzureAdConfig::default();
-        
+
         assert!(config.tenant_id.is_empty());
         assert!(config.client_id.is_empty());
         assert!(!config.graph_scopes.is_empty());
@@ -225,7 +227,7 @@ mod config_tests {
             group_filter: None,
             scim_endpoint: None,
         };
-        
+
         assert!(!config.domain.is_empty());
         assert!(!config.client_id.is_empty());
     }
@@ -241,7 +243,7 @@ mod config_tests {
             admin_email: Some("admin@example.com".to_string()),
             customer_id: None,
         };
-        
+
         assert!(!config.client_id.is_empty());
         assert!(!config.project_id.is_empty());
     }
@@ -259,7 +261,7 @@ mod config_tests {
             scopes: vec!["openid".to_string(), "profile".to_string()],
             claim_mappings: ClaimMappings::default(),
         };
-        
+
         assert!(!config.issuer_url.is_empty());
         assert!(!config.scopes.is_empty());
     }
@@ -280,7 +282,7 @@ mod sync_tests {
             SyncResultStatus::PartialSuccess,
             SyncResultStatus::Failed,
         ];
-        
+
         for status in statuses {
             let json = serde_json::to_string(&status).unwrap();
             let deserialized: SyncResultStatus = serde_json::from_str(&json).unwrap();
@@ -297,7 +299,7 @@ mod sync_tests {
             message: "Invalid email format".to_string(),
             timestamp: Utc::now(),
         };
-        
+
         assert_eq!(error.entity_type, "user");
         assert!(error.external_id.is_some());
     }
@@ -319,7 +321,7 @@ mod auth_tests {
             PrincipalType::Application,
             PrincipalType::ManagedIdentity,
         ];
-        
+
         for principal_type in types {
             let json = serde_json::to_string(&principal_type).unwrap();
             let deserialized: PrincipalType = serde_json::from_str(&json).unwrap();
@@ -345,7 +347,7 @@ mod auth_tests {
             expires_at: Utc::now() + chrono::Duration::hours(1),
             raw_claims: HashMap::new(),
         };
-        
+
         assert_eq!(principal.principal_type, PrincipalType::User);
         assert!(principal.email.is_some());
         assert!(!principal.scopes.is_empty());
@@ -369,7 +371,7 @@ mod auth_tests {
             expires_at: Utc::now() + chrono::Duration::hours(24),
             raw_claims: HashMap::new(),
         };
-        
+
         assert_eq!(principal.principal_type, PrincipalType::Service);
         assert!(principal.email.is_none());
     }

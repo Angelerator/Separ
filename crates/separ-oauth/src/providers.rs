@@ -49,7 +49,10 @@ pub fn get_provider_config(provider_type: OAuthProviderType) -> Option<&'static 
 
 /// Okta discovery URL format
 pub fn okta_discovery_url(domain: &str) -> String {
-    format!("https://{}/oauth2/default/.well-known/openid-configuration", domain)
+    format!(
+        "https://{}/oauth2/default/.well-known/openid-configuration",
+        domain
+    )
 }
 
 /// Auth0 discovery URL format
@@ -64,4 +67,3 @@ pub fn microsoft_discovery_url(tenant_id: &str) -> String {
         tenant_id
     )
 }
-

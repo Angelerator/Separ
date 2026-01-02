@@ -72,14 +72,8 @@ impl Settings {
             .set_default("jwt.access_token_expiry_secs", 3600)?
             .set_default("jwt.refresh_token_expiry_secs", 2592000)?
             // Load from config file if present
-            .add_source(
-                config::File::with_name("config/default")
-                    .required(false),
-            )
-            .add_source(
-                config::File::with_name("config/local")
-                    .required(false),
-            )
+            .add_source(config::File::with_name("config/default").required(false))
+            .add_source(config::File::with_name("config/local").required(false))
             // Load from environment variables with SEPAR_ prefix
             .add_source(
                 config::Environment::with_prefix("SEPAR")
@@ -116,4 +110,3 @@ impl Default for Settings {
         }
     }
 }
-

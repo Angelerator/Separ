@@ -13,11 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
-use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId,
-    Result, SeparError,
-};
+use separ_core::{identity::*, IdentityProviderId, Result, SeparError, TenantId};
 
 use super::common::*;
 
@@ -37,18 +33,19 @@ impl GoogleProvider {
     pub async fn new(provider_config: &IdentityProviderConfig) -> Result<Self> {
         let config = match &provider_config.config {
             ProviderConfigDetails::Google(c) => c.clone(),
-            _ => return Err(SeparError::InvalidInput {
-                message: "Expected Google configuration".to_string(),
-            }),
+            _ => {
+                return Err(SeparError::InvalidInput {
+                    message: "Expected Google configuration".to_string(),
+                })
+            }
         };
 
-        let http_client = HttpClient::new(
-            provider_config.sync_settings.max_retries,
-            1000,
-        )?;
+        let http_client = HttpClient::new(provider_config.sync_settings.max_retries, 1000)?;
 
         // Fetch OIDC discovery
-        let discovery = OidcDiscovery::fetch("https://accounts.google.com", &http_client).await.ok();
+        let discovery = OidcDiscovery::fetch("https://accounts.google.com", &http_client)
+            .await
+            .ok();
 
         Ok(Self {
             config,
@@ -69,7 +66,9 @@ impl GoogleProvider {
             &self.config.service_account_key,
             &self.config.admin_email,
         ) {
-            return self.get_service_account_token(sa_email, sa_key, admin_email).await;
+            return self
+                .get_service_account_token(sa_email, sa_key, admin_email)
+                .await;
         }
 
         Err(SeparError::ConfigError {
@@ -89,7 +88,7 @@ impl GoogleProvider {
         // 2. Create a signed JWT assertion
         // 3. Exchange it for an access token with the target scopes
         // 4. Impersonate the admin user for domain-wide access
-        
+
         Err(SeparError::Internal {
             message: "Service account token generation not yet implemented".to_string(),
         })
@@ -101,20 +100,18 @@ impl GoogleProvider {
         endpoint: &str,
         token: &str,
     ) -> Result<T> {
-        let url = format!("https://admin.googleapis.com/admin/directory/v1{}", endpoint);
-        
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .get(&url)
-                    .bearer_auth(token)
-            )
+        let url = format!(
+            "https://admin.googleapis.com/admin/directory/v1{}",
+            endpoint
+        );
+
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().get(&url).bearer_auth(token))
             .await?;
 
-        response.json().await.map_err(|e| {
-            SeparError::Internal {
-                message: format!("Failed to parse Admin SDK response: {}", e),
-            }
+        response.json().await.map_err(|e| SeparError::Internal {
+            message: format!("Failed to parse Admin SDK response: {}", e),
         })
     }
 
@@ -133,28 +130,24 @@ impl GoogleProvider {
                 "https://admin.googleapis.com/admin/directory/v1{}?maxResults=200",
                 endpoint
             );
-            
+
             if let Some(q) = query {
                 url.push_str(&format!("&query={}", urlencoding::encode(q)));
             }
-            
+
             if let Some(pt) = &page_token {
                 url.push_str(&format!("&pageToken={}", pt));
             }
 
-            let response = self.http_client
-                .execute_with_retry(
-                    self.http_client.inner()
-                        .get(&url)
-                        .bearer_auth(token)
-                )
+            let response = self
+                .http_client
+                .execute_with_retry(self.http_client.inner().get(&url).bearer_auth(token))
                 .await?;
 
-            let page: GoogleListResponse<T> = response.json().await.map_err(|e| {
-                SeparError::Internal {
+            let page: GoogleListResponse<T> =
+                response.json().await.map_err(|e| SeparError::Internal {
                     message: format!("Failed to parse Admin SDK response: {}", e),
-                }
-            })?;
+                })?;
 
             if let Some(items) = page.items {
                 all_items.extend(items);
@@ -174,7 +167,9 @@ impl GoogleProvider {
         SyncedUser {
             external_id: user.id.clone(),
             email: user.primary_email.clone(),
-            display_name: user.name.as_ref()
+            display_name: user
+                .name
+                .as_ref()
                 .map(|n| n.full_name.clone())
                 .unwrap_or_default(),
             given_name: user.name.as_ref().and_then(|n| n.given_name.clone()),
@@ -236,15 +231,13 @@ impl IdentitySync for GoogleProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_users(&self) -> Result<Vec<SyncedUser>> {
         info!("Starting full user sync from Google Workspace");
-        
+
         let token = self.get_admin_token().await?;
         let customer = self.config.customer_id.as_deref().unwrap_or("my_customer");
-        
-        let google_users: Vec<GoogleUser> = self.admin_request_paginated(
-            &format!("/users?customer={}", customer),
-            &token,
-            None,
-        ).await?;
+
+        let google_users: Vec<GoogleUser> = self
+            .admin_request_paginated(&format!("/users?customer={}", customer), &token, None)
+            .await?;
 
         info!("Fetched {} users from Google Workspace", google_users.len());
 
@@ -280,17 +273,18 @@ impl IdentitySync for GoogleProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_groups(&self) -> Result<Vec<SyncedGroup>> {
         info!("Starting full group sync from Google Workspace");
-        
+
         let token = self.get_admin_token().await?;
         let customer = self.config.customer_id.as_deref().unwrap_or("my_customer");
-        
-        let google_groups: Vec<GoogleGroup> = self.admin_request_paginated(
-            &format!("/groups?customer={}", customer),
-            &token,
-            None,
-        ).await?;
 
-        info!("Fetched {} groups from Google Workspace", google_groups.len());
+        let google_groups: Vec<GoogleGroup> = self
+            .admin_request_paginated(&format!("/groups?customer={}", customer), &token, None)
+            .await?;
+
+        info!(
+            "Fetched {} groups from Google Workspace",
+            google_groups.len()
+        );
 
         let mut groups: Vec<SyncedGroup> = google_groups
             .iter()
@@ -299,18 +293,21 @@ impl IdentitySync for GoogleProvider {
 
         // Fetch members for each group
         for (i, google_group) in google_groups.iter().enumerate() {
-            match self.admin_request_paginated::<GoogleMember>(
-                &format!("/groups/{}/members", google_group.id),
-                &token,
-                None,
-            ).await {
+            match self
+                .admin_request_paginated::<GoogleMember>(
+                    &format!("/groups/{}/members", google_group.id),
+                    &token,
+                    None,
+                )
+                .await
+            {
                 Ok(members) => {
                     groups[i].members = members
                         .iter()
                         .filter(|m| m.member_type == "USER")
                         .map(|m| m.id.clone())
                         .collect();
-                    
+
                     // Nested groups
                     if self.features.resolve_nested_groups {
                         groups[i].child_groups = members
@@ -321,7 +318,10 @@ impl IdentitySync for GoogleProvider {
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to fetch members for group {}: {}", google_group.id, e);
+                    warn!(
+                        "Failed to fetch members for group {}: {}",
+                        google_group.id, e
+                    );
                 }
             }
         }
@@ -337,11 +337,10 @@ impl IdentitySync for GoogleProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_user(&self, external_id: &str) -> Result<Option<SyncedUser>> {
         let token = self.get_admin_token().await?;
-        
-        let result: std::result::Result<GoogleUser, _> = self.admin_request(
-            &format!("/users/{}", external_id),
-            &token,
-        ).await;
+
+        let result: std::result::Result<GoogleUser, _> = self
+            .admin_request(&format!("/users/{}", external_id), &token)
+            .await;
 
         match result {
             Ok(user) => Ok(Some(self.google_user_to_synced(&user))),
@@ -358,11 +357,10 @@ impl IdentitySync for GoogleProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_group(&self, external_id: &str) -> Result<Option<SyncedGroup>> {
         let token = self.get_admin_token().await?;
-        
-        let result: std::result::Result<GoogleGroup, _> = self.admin_request(
-            &format!("/groups/{}", external_id),
-            &token,
-        ).await;
+
+        let result: std::result::Result<GoogleGroup, _> = self
+            .admin_request(&format!("/groups/{}", external_id), &token)
+            .await;
 
         match result {
             Ok(group) => Ok(Some(self.google_group_to_synced(&group))),
@@ -379,12 +377,14 @@ impl IdentitySync for GoogleProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_user_groups(&self, user_external_id: &str) -> Result<Vec<SyncedGroup>> {
         let token = self.get_admin_token().await?;
-        
-        let google_groups: Vec<GoogleGroup> = self.admin_request_paginated(
-            &format!("/groups?userKey={}", user_external_id),
-            &token,
-            None,
-        ).await?;
+
+        let google_groups: Vec<GoogleGroup> = self
+            .admin_request_paginated(
+                &format!("/groups?userKey={}", user_external_id),
+                &token,
+                None,
+            )
+            .await?;
 
         let groups = google_groups
             .iter()
@@ -401,7 +401,8 @@ impl IdentitySync for GoogleProvider {
             Ok(_) => Ok(true),
             Err(_) => {
                 // Fall back to just checking JWKS
-                let result = self.jwks_cache
+                let result = self
+                    .jwks_cache
                     .get_or_fetch(&self.jwks_uri(), &self.http_client)
                     .await;
                 Ok(result.is_ok())
@@ -432,7 +433,8 @@ impl IdentityAuth for GoogleProvider {
         let kid = extract_jwt_kid(token)?;
 
         // Get JWKS
-        let jwks = self.jwks_cache
+        let jwks = self
+            .jwks_cache
             .get_or_fetch(&self.jwks_uri(), &self.http_client)
             .await?;
 
@@ -442,7 +444,7 @@ impl IdentityAuth for GoogleProvider {
         // Build validation
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&["https://accounts.google.com"]);
-        
+
         if !options.audiences.is_empty() {
             validation.set_audience(&options.audiences);
         } else {
@@ -468,14 +470,13 @@ impl IdentityAuth for GoogleProvider {
             display_name: claims.name.clone(),
             groups: vec![],
             roles: vec![],
-            scopes: claims.scope
+            scopes: claims
+                .scope
                 .as_ref()
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
-            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0)
-                .unwrap_or(Utc::now()),
-            expires_at: DateTime::from_timestamp(claims.exp, 0)
-                .unwrap_or(Utc::now()),
+            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0).unwrap_or(Utc::now()),
+            expires_at: DateTime::from_timestamp(claims.exp, 0).unwrap_or(Utc::now()),
             raw_claims: serde_json::to_value(&claims)
                 .map(|v| v.as_object().cloned().unwrap_or_default())
                 .unwrap_or_default()
@@ -493,7 +494,8 @@ impl IdentityAuth for GoogleProvider {
         nonce: Option<&str>,
         redirect_uri: &str,
     ) -> Result<String> {
-        let auth_endpoint = self.discovery
+        let auth_endpoint = self
+            .discovery
             .as_ref()
             .map(|d| d.authorization_endpoint.clone())
             .unwrap_or_else(|| "https://accounts.google.com/o/oauth2/v2/auth".to_string());
@@ -520,12 +522,9 @@ impl IdentityAuth for GoogleProvider {
     }
 
     #[instrument(skip(self, code), fields(provider_id = %self.provider_id))]
-    async fn exchange_code(
-        &self,
-        code: &str,
-        redirect_uri: &str,
-    ) -> Result<TokenExchangeResult> {
-        let token_endpoint = self.discovery
+    async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<TokenExchangeResult> {
+        let token_endpoint = self
+            .discovery
             .as_ref()
             .map(|d| d.token_endpoint.clone())
             .unwrap_or_else(|| "https://oauth2.googleapis.com/token".to_string());
@@ -538,19 +537,15 @@ impl IdentityAuth for GoogleProvider {
             ("grant_type", "authorization_code"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_endpoint)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_endpoint).form(&params))
             .await?;
 
-        let token_response: GoogleTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: GoogleTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         // Validate ID token if present
         let principal = if let Some(id_token) = &token_response.id_token {
@@ -568,11 +563,14 @@ impl IdentityAuth for GoogleProvider {
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal,
@@ -581,7 +579,8 @@ impl IdentityAuth for GoogleProvider {
 
     #[instrument(skip(self, refresh_token), fields(provider_id = %self.provider_id))]
     async fn refresh_token(&self, refresh_token: &str) -> Result<TokenExchangeResult> {
-        let token_endpoint = self.discovery
+        let token_endpoint = self
+            .discovery
             .as_ref()
             .map(|d| d.token_endpoint.clone())
             .unwrap_or_else(|| "https://oauth2.googleapis.com/token".to_string());
@@ -593,27 +592,26 @@ impl IdentityAuth for GoogleProvider {
             ("grant_type", "refresh_token"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_endpoint)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_endpoint).form(&params))
             .await?;
 
-        let token_response: GoogleTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: GoogleTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal: None,
@@ -707,4 +705,3 @@ struct GoogleTokenClaims {
     #[serde(default)]
     scope: Option<String>,
 }
-

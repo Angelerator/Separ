@@ -14,11 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
-use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId,
-    Result, SeparError,
-};
+use separ_core::{identity::*, IdentityProviderId, Result, SeparError, TenantId};
 
 use super::common::*;
 
@@ -34,14 +30,14 @@ pub struct AzureAdProvider {
 
 impl AzureAdProvider {
     /// Create a new Azure AD provider instance
-    pub fn new(
-        provider_config: &IdentityProviderConfig,
-    ) -> Result<Self> {
+    pub fn new(provider_config: &IdentityProviderConfig) -> Result<Self> {
         let config = match &provider_config.config {
             ProviderConfigDetails::AzureAd(c) => c.clone(),
-            _ => return Err(SeparError::InvalidInput {
-                message: "Expected Azure AD configuration".to_string(),
-            }),
+            _ => {
+                return Err(SeparError::InvalidInput {
+                    message: "Expected Azure AD configuration".to_string(),
+                })
+            }
         };
 
         let http_client = HttpClient::new(
@@ -73,19 +69,15 @@ impl AzureAdProvider {
             ("grant_type", "client_credentials"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_url)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_url).form(&params))
             .await?;
 
-        let token_response: AzureTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: AzureTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         Ok(token_response.access_token)
     }
@@ -97,19 +89,14 @@ impl AzureAdProvider {
         token: &str,
     ) -> Result<T> {
         let url = format!("https://graph.microsoft.com/v1.0{}", endpoint);
-        
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .get(&url)
-                    .bearer_auth(token)
-            )
+
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().get(&url).bearer_auth(token))
             .await?;
 
-        response.json().await.map_err(|e| {
-            SeparError::Internal {
-                message: format!("Failed to parse Graph response: {}", e),
-            }
+        response.json().await.map_err(|e| SeparError::Internal {
+            message: format!("Failed to parse Graph response: {}", e),
         })
     }
 
@@ -122,25 +109,21 @@ impl AzureAdProvider {
     ) -> Result<Vec<T>> {
         let mut all_items = Vec::new();
         let mut url = format!("https://graph.microsoft.com/v1.0{}", endpoint);
-        
+
         if let Some(f) = filter {
             url = format!("{}?$filter={}", url, urlencoding::encode(f));
         }
 
         loop {
-            let response = self.http_client
-                .execute_with_retry(
-                    self.http_client.inner()
-                        .get(&url)
-                        .bearer_auth(token)
-                )
+            let response = self
+                .http_client
+                .execute_with_retry(self.http_client.inner().get(&url).bearer_auth(token))
                 .await?;
 
-            let page: GraphListResponse<T> = response.json().await.map_err(|e| {
-                SeparError::Internal {
+            let page: GraphListResponse<T> =
+                response.json().await.map_err(|e| SeparError::Internal {
                     message: format!("Failed to parse Graph response: {}", e),
-                }
-            })?;
+                })?;
 
             all_items.extend(page.value);
 
@@ -157,14 +140,18 @@ impl AzureAdProvider {
     fn azure_user_to_synced(&self, user: &AzureUser) -> SyncedUser {
         SyncedUser {
             external_id: user.id.clone(),
-            email: user.mail.clone().or_else(|| user.user_principal_name.clone()).unwrap_or_default(),
+            email: user
+                .mail
+                .clone()
+                .or_else(|| user.user_principal_name.clone())
+                .unwrap_or_default(),
             display_name: user.display_name.clone().unwrap_or_default(),
             given_name: user.given_name.clone(),
             family_name: user.surname.clone(),
             picture_url: None, // Azure doesn't provide this directly
             active: user.account_enabled.unwrap_or(true),
             email_verified: true, // Azure verifies emails
-            groups: vec![], // Populated separately
+            groups: vec![],       // Populated separately
             roles: vec![],
             attributes: {
                 let mut attrs = HashMap::new();
@@ -189,8 +176,7 @@ impl AzureAdProvider {
             external_id: group.id.clone(),
             name: group.display_name.clone().unwrap_or_default(),
             description: group.description.clone(),
-            group_type: group.group_types.as_ref()
-                .and_then(|t| t.first().cloned()),
+            group_type: group.group_types.as_ref().and_then(|t| t.first().cloned()),
             members: vec![], // Populated separately
             parent_groups: vec![],
             child_groups: vec![],
@@ -229,14 +215,12 @@ impl IdentitySync for AzureAdProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_users(&self) -> Result<Vec<SyncedUser>> {
         info!("Starting full user sync from Azure AD");
-        
+
         let token = self.get_graph_token().await?;
-        
-        let azure_users: Vec<AzureUser> = self.graph_request_paginated(
-            "/users",
-            &token,
-            self.config.user_filter.as_deref(),
-        ).await?;
+
+        let azure_users: Vec<AzureUser> = self
+            .graph_request_paginated("/users", &token, self.config.user_filter.as_deref())
+            .await?;
 
         info!("Fetched {} users from Azure AD", azure_users.len());
 
@@ -264,21 +248,22 @@ impl IdentitySync for AzureAdProvider {
 
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_users_incremental(&self, since: DateTime<Utc>) -> Result<Vec<SyncedUser>> {
-        info!("Starting incremental user sync from Azure AD since {}", since);
-        
+        info!(
+            "Starting incremental user sync from Azure AD since {}",
+            since
+        );
+
         let token = self.get_graph_token().await?;
-        
+
         // Azure AD delta query for changes
         let filter = format!(
             "lastModifiedDateTime ge {}",
             since.format("%Y-%m-%dT%H:%M:%SZ")
         );
-        
-        let azure_users: Vec<AzureUser> = self.graph_request_paginated(
-            "/users",
-            &token,
-            Some(&filter),
-        ).await?;
+
+        let azure_users: Vec<AzureUser> = self
+            .graph_request_paginated("/users", &token, Some(&filter))
+            .await?;
 
         info!("Fetched {} modified users from Azure AD", azure_users.len());
 
@@ -293,14 +278,12 @@ impl IdentitySync for AzureAdProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_groups(&self) -> Result<Vec<SyncedGroup>> {
         info!("Starting full group sync from Azure AD");
-        
+
         let token = self.get_graph_token().await?;
-        
-        let azure_groups: Vec<AzureGroup> = self.graph_request_paginated(
-            "/groups",
-            &token,
-            self.config.group_filter.as_deref(),
-        ).await?;
+
+        let azure_groups: Vec<AzureGroup> = self
+            .graph_request_paginated("/groups", &token, self.config.group_filter.as_deref())
+            .await?;
 
         info!("Fetched {} groups from Azure AD", azure_groups.len());
 
@@ -311,18 +294,21 @@ impl IdentitySync for AzureAdProvider {
 
         // Fetch members for each group
         for (i, azure_group) in azure_groups.iter().enumerate() {
-            match self.graph_request_paginated::<AzureDirectoryObject>(
-                &format!("/groups/{}/members", azure_group.id),
-                &token,
-                None,
-            ).await {
+            match self
+                .graph_request_paginated::<AzureDirectoryObject>(
+                    &format!("/groups/{}/members", azure_group.id),
+                    &token,
+                    None,
+                )
+                .await
+            {
                 Ok(members) => {
                     groups[i].members = members
                         .iter()
                         .filter(|m| m.odata_type.as_deref() == Some("#microsoft.graph.user"))
                         .map(|m| m.id.clone())
                         .collect();
-                    
+
                     // Nested groups
                     if self.features.resolve_nested_groups {
                         groups[i].child_groups = members
@@ -333,7 +319,10 @@ impl IdentitySync for AzureAdProvider {
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to fetch members for group {}: {}", azure_group.id, e);
+                    warn!(
+                        "Failed to fetch members for group {}: {}",
+                        azure_group.id, e
+                    );
                 }
             }
         }
@@ -343,22 +332,26 @@ impl IdentitySync for AzureAdProvider {
 
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_groups_incremental(&self, since: DateTime<Utc>) -> Result<Vec<SyncedGroup>> {
-        info!("Starting incremental group sync from Azure AD since {}", since);
-        
+        info!(
+            "Starting incremental group sync from Azure AD since {}",
+            since
+        );
+
         let token = self.get_graph_token().await?;
-        
+
         let filter = format!(
             "lastModifiedDateTime ge {}",
             since.format("%Y-%m-%dT%H:%M:%SZ")
         );
-        
-        let azure_groups: Vec<AzureGroup> = self.graph_request_paginated(
-            "/groups",
-            &token,
-            Some(&filter),
-        ).await?;
 
-        info!("Fetched {} modified groups from Azure AD", azure_groups.len());
+        let azure_groups: Vec<AzureGroup> = self
+            .graph_request_paginated("/groups", &token, Some(&filter))
+            .await?;
+
+        info!(
+            "Fetched {} modified groups from Azure AD",
+            azure_groups.len()
+        );
 
         let groups = azure_groups
             .iter()
@@ -371,11 +364,10 @@ impl IdentitySync for AzureAdProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_user(&self, external_id: &str) -> Result<Option<SyncedUser>> {
         let token = self.get_graph_token().await?;
-        
-        let result: std::result::Result<AzureUser, _> = self.graph_request(
-            &format!("/users/{}", external_id),
-            &token,
-        ).await;
+
+        let result: std::result::Result<AzureUser, _> = self
+            .graph_request(&format!("/users/{}", external_id), &token)
+            .await;
 
         match result {
             Ok(user) => Ok(Some(self.azure_user_to_synced(&user))),
@@ -392,11 +384,10 @@ impl IdentitySync for AzureAdProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_group(&self, external_id: &str) -> Result<Option<SyncedGroup>> {
         let token = self.get_graph_token().await?;
-        
-        let result: std::result::Result<AzureGroup, _> = self.graph_request(
-            &format!("/groups/{}", external_id),
-            &token,
-        ).await;
+
+        let result: std::result::Result<AzureGroup, _> = self
+            .graph_request(&format!("/groups/{}", external_id), &token)
+            .await;
 
         match result {
             Ok(group) => Ok(Some(self.azure_group_to_synced(&group))),
@@ -413,12 +404,14 @@ impl IdentitySync for AzureAdProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_user_groups(&self, user_external_id: &str) -> Result<Vec<SyncedGroup>> {
         let token = self.get_graph_token().await?;
-        
-        let azure_groups: Vec<AzureGroup> = self.graph_request_paginated(
-            &format!("/users/{}/memberOf/microsoft.graph.group", user_external_id),
-            &token,
-            None,
-        ).await?;
+
+        let azure_groups: Vec<AzureGroup> = self
+            .graph_request_paginated(
+                &format!("/users/{}/memberOf/microsoft.graph.group", user_external_id),
+                &token,
+                None,
+            )
+            .await?;
 
         let groups = azure_groups
             .iter()
@@ -433,7 +426,7 @@ impl IdentitySync for AzureAdProvider {
         match self.get_graph_token().await {
             Ok(token) => {
                 // Try to fetch organization info
-                let result: std::result::Result<serde_json::Value, _> = 
+                let result: std::result::Result<serde_json::Value, _> =
                     self.graph_request("/organization", &token).await;
                 Ok(result.is_ok())
             }
@@ -451,16 +444,17 @@ impl IdentitySyncApps for AzureAdProvider {
         }
 
         info!("Starting service principal sync from Azure AD");
-        
-        let token = self.get_graph_token().await?;
-        
-        let service_principals: Vec<AzureServicePrincipal> = self.graph_request_paginated(
-            "/servicePrincipals",
-            &token,
-            None,
-        ).await?;
 
-        info!("Fetched {} service principals from Azure AD", service_principals.len());
+        let token = self.get_graph_token().await?;
+
+        let service_principals: Vec<AzureServicePrincipal> = self
+            .graph_request_paginated("/servicePrincipals", &token, None)
+            .await?;
+
+        info!(
+            "Fetched {} service principals from Azure AD",
+            service_principals.len()
+        );
 
         let apps = service_principals
             .iter()
@@ -492,11 +486,10 @@ impl IdentitySyncApps for AzureAdProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn get_app(&self, external_id: &str) -> Result<Option<SyncedApp>> {
         let token = self.get_graph_token().await?;
-        
-        let result: std::result::Result<AzureServicePrincipal, _> = self.graph_request(
-            &format!("/servicePrincipals/{}", external_id),
-            &token,
-        ).await;
+
+        let result: std::result::Result<AzureServicePrincipal, _> = self
+            .graph_request(&format!("/servicePrincipals/{}", external_id), &token)
+            .await;
 
         match result {
             Ok(sp) => Ok(Some(SyncedApp {
@@ -546,7 +539,8 @@ impl IdentityAuth for AzureAdProvider {
         let kid = extract_jwt_kid(token)?;
 
         // Get JWKS
-        let jwks = self.jwks_cache
+        let jwks = self
+            .jwks_cache
             .get_or_fetch(&self.jwks_uri(), &self.http_client)
             .await?;
 
@@ -556,7 +550,7 @@ impl IdentityAuth for AzureAdProvider {
         // Build validation
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[&self.issuer()]);
-        
+
         if !options.audiences.is_empty() {
             validation.set_audience(&options.audiences);
         } else {
@@ -585,19 +579,21 @@ impl IdentityAuth for AzureAdProvider {
             tenant_id: self.tenant_id,
             provider_id: self.provider_id,
             provider_type: ProviderType::AzureAd,
-            email: claims.email.clone()
+            email: claims
+                .email
+                .clone()
                 .or_else(|| claims.upn.clone())
                 .or_else(|| claims.preferred_username.clone()),
             display_name: claims.name.clone(),
             groups: claims.groups.clone().unwrap_or_default(),
             roles: claims.roles.clone().unwrap_or_default(),
-            scopes: claims.scp.as_ref()
+            scopes: claims
+                .scp
+                .as_ref()
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
-            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0)
-                .unwrap_or(Utc::now()),
-            expires_at: DateTime::from_timestamp(claims.exp, 0)
-                .unwrap_or(Utc::now()),
+            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0).unwrap_or(Utc::now()),
+            expires_at: DateTime::from_timestamp(claims.exp, 0).unwrap_or(Utc::now()),
             raw_claims: serde_json::to_value(&claims)
                 .map(|v| v.as_object().cloned().unwrap_or_default())
                 .unwrap_or_default()
@@ -637,11 +633,7 @@ impl IdentityAuth for AzureAdProvider {
     }
 
     #[instrument(skip(self, code), fields(provider_id = %self.provider_id))]
-    async fn exchange_code(
-        &self,
-        code: &str,
-        redirect_uri: &str,
-    ) -> Result<TokenExchangeResult> {
+    async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<TokenExchangeResult> {
         let token_url = format!(
             "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
             self.config.tenant_id
@@ -655,19 +647,15 @@ impl IdentityAuth for AzureAdProvider {
             ("grant_type", "authorization_code"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_url)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_url).form(&params))
             .await?;
 
-        let token_response: AzureTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: AzureTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         // Validate ID token if present
         let principal = if let Some(id_token) = &token_response.id_token {
@@ -685,11 +673,14 @@ impl IdentityAuth for AzureAdProvider {
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal,
@@ -710,27 +701,26 @@ impl IdentityAuth for AzureAdProvider {
             ("grant_type", "refresh_token"),
         ];
 
-        let response = self.http_client
-            .execute_with_retry(
-                self.http_client.inner()
-                    .post(&token_url)
-                    .form(&params)
-            )
+        let response = self
+            .http_client
+            .execute_with_retry(self.http_client.inner().post(&token_url).form(&params))
             .await?;
 
-        let token_response: AzureTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: AzureTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal: None,
@@ -844,4 +834,3 @@ struct AzureTokenClaims {
     #[serde(default)]
     idtyp: Option<String>,
 }
-

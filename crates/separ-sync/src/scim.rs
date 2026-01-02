@@ -1,17 +1,17 @@
 //! SCIM 2.0 Protocol Handler
-//! 
+//!
 //! Implements SCIM (System for Cross-domain Identity Management) protocol
 //! for user and group provisioning from external IdPs.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{debug, info, instrument, warn};
+use tracing::{info, instrument, warn};
 
 use separ_core::{
-    Group, GroupId, Result, ScimEmail, ScimGroup, ScimHandler, ScimMember, ScimUser,
-    TenantId, User, UserId, UserStatus, SeparError, UserRepository, GroupRepository,
-    AuthorizationService, Subject, SubjectType, Resource, Relationship,
+    AuthorizationService, Group, GroupId, GroupRepository, Relationship, Resource, Result,
+    ScimEmail, ScimGroup, ScimHandler, ScimMember, ScimUser, SeparError, Subject, SubjectType,
+    TenantId, User, UserId, UserRepository, UserStatus,
 };
 
 /// SCIM Service implementation
@@ -50,8 +50,11 @@ where
 {
     #[instrument(skip(self, scim_user))]
     async fn create_user(&self, tenant_id: TenantId, scim_user: ScimUser) -> Result<User> {
-        info!("SCIM: Creating user {} for tenant {}", scim_user.user_name, tenant_id);
-        
+        info!(
+            "SCIM: Creating user {} for tenant {}",
+            scim_user.user_name, tenant_id
+        );
+
         // Check if user already exists
         let primary_email = scim_user
             .emails
@@ -61,7 +64,11 @@ where
             .map(|e| e.value.clone())
             .unwrap_or(scim_user.user_name.clone());
 
-        if let Some(existing) = self.user_repo.get_by_email(tenant_id, &primary_email).await? {
+        if let Some(existing) = self
+            .user_repo
+            .get_by_email(tenant_id, &primary_email)
+            .await?
+        {
             warn!("SCIM: User {} already exists", primary_email);
             return Ok(existing);
         }
@@ -78,7 +85,11 @@ where
             picture_url: None,
             locale: None,
             timezone: None,
-            status: if scim_user.active { UserStatus::Active } else { UserStatus::Inactive },
+            status: if scim_user.active {
+                UserStatus::Active
+            } else {
+                UserStatus::Inactive
+            },
             metadata: Default::default(),
             last_login_at: None,
             created_at: chrono::Utc::now(),
@@ -103,15 +114,27 @@ where
         };
         self.auth_service.write_relationship(&relationship).await?;
 
-        info!("SCIM: Created user {} with id {}", created_user.email, created_user.id);
+        info!(
+            "SCIM: Created user {} with id {}",
+            created_user.email, created_user.id
+        );
         Ok(created_user)
     }
 
     #[instrument(skip(self, scim_user))]
-    async fn update_user(&self, tenant_id: TenantId, external_id: &str, scim_user: ScimUser) -> Result<User> {
-        info!("SCIM: Updating user {} for tenant {}", external_id, tenant_id);
+    async fn update_user(
+        &self,
+        tenant_id: TenantId,
+        external_id: &str,
+        scim_user: ScimUser,
+    ) -> Result<User> {
+        info!(
+            "SCIM: Updating user {} for tenant {}",
+            external_id, tenant_id
+        );
 
-        let existing = self.user_repo
+        let existing = self
+            .user_repo
             .get_by_external_id(tenant_id, external_id)
             .await?
             .ok_or_else(|| SeparError::not_found("user", external_id))?;
@@ -136,7 +159,11 @@ where
             picture_url: existing.picture_url,
             locale: existing.locale,
             timezone: existing.timezone,
-            status: if scim_user.active { UserStatus::Active } else { UserStatus::Inactive },
+            status: if scim_user.active {
+                UserStatus::Active
+            } else {
+                UserStatus::Inactive
+            },
             metadata: existing.metadata,
             last_login_at: existing.last_login_at,
             created_at: existing.created_at,
@@ -150,9 +177,13 @@ where
 
     #[instrument(skip(self))]
     async fn delete_user(&self, tenant_id: TenantId, external_id: &str) -> Result<()> {
-        info!("SCIM: Deleting user {} for tenant {}", external_id, tenant_id);
+        info!(
+            "SCIM: Deleting user {} for tenant {}",
+            external_id, tenant_id
+        );
 
-        let user = self.user_repo
+        let user = self
+            .user_repo
             .get_by_external_id(tenant_id, external_id)
             .await?
             .ok_or_else(|| SeparError::not_found("user", external_id))?;
@@ -182,7 +213,10 @@ where
 
     #[instrument(skip(self, scim_group))]
     async fn create_group(&self, tenant_id: TenantId, scim_group: ScimGroup) -> Result<Group> {
-        info!("SCIM: Creating group {} for tenant {}", scim_group.display_name, tenant_id);
+        info!(
+            "SCIM: Creating group {} for tenant {}",
+            scim_group.display_name, tenant_id
+        );
 
         let group = Group {
             id: GroupId::new(),
@@ -199,9 +233,15 @@ where
 
         // Add members to the group
         for member in scim_group.members {
-            if let Some(user) = self.user_repo.get_by_external_id(tenant_id, &member.value).await? {
-                self.group_repo.add_member(created_group.id, user.id).await?;
-                
+            if let Some(user) = self
+                .user_repo
+                .get_by_external_id(tenant_id, &member.value)
+                .await?
+            {
+                self.group_repo
+                    .add_member(created_group.id, user.id)
+                    .await?;
+
                 // Create SpiceDB relationship: user is member of group
                 let relationship = Relationship {
                     resource: Resource {
@@ -220,13 +260,24 @@ where
             }
         }
 
-        info!("SCIM: Created group {} with id {}", created_group.name, created_group.id);
+        info!(
+            "SCIM: Created group {} with id {}",
+            created_group.name, created_group.id
+        );
         Ok(created_group)
     }
 
     #[instrument(skip(self, scim_group))]
-    async fn update_group(&self, tenant_id: TenantId, external_id: &str, scim_group: ScimGroup) -> Result<Group> {
-        info!("SCIM: Updating group {} for tenant {}", external_id, tenant_id);
+    async fn update_group(
+        &self,
+        tenant_id: TenantId,
+        external_id: &str,
+        scim_group: ScimGroup,
+    ) -> Result<Group> {
+        info!(
+            "SCIM: Updating group {} for tenant {}",
+            external_id, tenant_id
+        );
 
         // Find group by external_id (would need to add this to repository)
         // For now, simplified implementation
@@ -248,7 +299,7 @@ where
         };
 
         let result = self.group_repo.update(&updated_group).await?;
-        
+
         // Update group members would require more complex logic
         // to diff current vs new members
 
@@ -258,7 +309,10 @@ where
 
     #[instrument(skip(self))]
     async fn delete_group(&self, tenant_id: TenantId, external_id: &str) -> Result<()> {
-        info!("SCIM: Deleting group {} for tenant {}", external_id, tenant_id);
+        info!(
+            "SCIM: Deleting group {} for tenant {}",
+            external_id, tenant_id
+        );
 
         let existing_groups = self.group_repo.list_by_tenant(tenant_id, 0, 1000).await?;
         let group = existing_groups
@@ -380,17 +434,26 @@ impl ScimUserResource {
             display_name: self.display_name.clone(),
             given_name: self.name.as_ref().and_then(|n| n.given_name.clone()),
             family_name: self.name.as_ref().and_then(|n| n.family_name.clone()),
-            emails: self.emails.as_ref().map(|emails| {
-                emails.iter().map(|e| ScimEmail {
-                    value: e.value.clone(),
-                    primary: e.primary.unwrap_or(false),
-                    email_type: e.email_type.clone(),
-                }).collect()
-            }).unwrap_or_default(),
+            emails: self
+                .emails
+                .as_ref()
+                .map(|emails| {
+                    emails
+                        .iter()
+                        .map(|e| ScimEmail {
+                            value: e.value.clone(),
+                            primary: e.primary.unwrap_or(false),
+                            email_type: e.email_type.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             active: self.active.unwrap_or(true),
-            groups: self.groups.as_ref().map(|groups| {
-                groups.iter().map(|g| g.value.clone()).collect()
-            }).unwrap_or_default(),
+            groups: self
+                .groups
+                .as_ref()
+                .map(|groups| groups.iter().map(|g| g.value.clone()).collect())
+                .unwrap_or_default(),
         }
     }
 }
@@ -400,13 +463,19 @@ impl ScimGroupResource {
         ScimGroup {
             external_id: self.external_id.clone().or(self.id.clone()),
             display_name: self.display_name.clone(),
-            members: self.members.as_ref().map(|members| {
-                members.iter().map(|m| ScimMember {
-                    value: m.value.clone(),
-                    display: m.display.clone(),
-                }).collect()
-            }).unwrap_or_default(),
+            members: self
+                .members
+                .as_ref()
+                .map(|members| {
+                    members
+                        .iter()
+                        .map(|m| ScimMember {
+                            value: m.value.clone(),
+                            display: m.display.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 }
-

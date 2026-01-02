@@ -5,7 +5,8 @@ use sqlx::{PgPool, Row};
 use tracing::instrument;
 
 use separ_core::{
-    Result, Tenant, TenantId, TenantRepository, TenantSettings, TenantStatus, SeparError, PlatformId,
+    PlatformId, Result, SeparError, Tenant, TenantId, TenantRepository, TenantSettings,
+    TenantStatus,
 };
 
 /// PostgreSQL implementation of TenantRepository
@@ -23,11 +24,15 @@ impl PgTenantRepository {
 impl TenantRepository for PgTenantRepository {
     #[instrument(skip(self, tenant))]
     async fn create(&self, tenant: &Tenant) -> Result<Tenant> {
-        let settings_json = serde_json::to_value(&tenant.settings)
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
-        
-        let metadata_json = serde_json::to_value(&tenant.metadata)
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        let settings_json =
+            serde_json::to_value(&tenant.settings).map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
+
+        let metadata_json =
+            serde_json::to_value(&tenant.metadata).map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         let status_str = match tenant.status {
             TenantStatus::Active => "active",
@@ -65,7 +70,7 @@ impl TenantRepository for PgTenantRepository {
             SELECT id, platform_id, name, slug, status, settings, metadata, created_at, updated_at
             FROM tenants
             WHERE id = $1
-            "#
+            "#,
         )
         .bind(id.as_uuid())
         .fetch_optional(&self.pool)
@@ -84,12 +89,11 @@ impl TenantRepository for PgTenantRepository {
                 };
 
                 let settings_json: serde_json::Value = row.get("settings");
-                let settings: TenantSettings = serde_json::from_value(settings_json)
-                    .unwrap_or_default();
-                
+                let settings: TenantSettings =
+                    serde_json::from_value(settings_json).unwrap_or_default();
+
                 let metadata_json: serde_json::Value = row.get("metadata");
-                let metadata = serde_json::from_value(metadata_json)
-                    .unwrap_or_default();
+                let metadata = serde_json::from_value(metadata_json).unwrap_or_default();
 
                 Ok(Some(Tenant {
                     id: TenantId::from_uuid(row.get("id")),
@@ -114,7 +118,7 @@ impl TenantRepository for PgTenantRepository {
             SELECT id, platform_id, name, slug, status, settings, metadata, created_at, updated_at
             FROM tenants
             WHERE slug = $1
-            "#
+            "#,
         )
         .bind(slug)
         .fetch_optional(&self.pool)
@@ -133,12 +137,11 @@ impl TenantRepository for PgTenantRepository {
                 };
 
                 let settings_json: serde_json::Value = row.get("settings");
-                let settings: TenantSettings = serde_json::from_value(settings_json)
-                    .unwrap_or_default();
-                
+                let settings: TenantSettings =
+                    serde_json::from_value(settings_json).unwrap_or_default();
+
                 let metadata_json: serde_json::Value = row.get("metadata");
-                let metadata = serde_json::from_value(metadata_json)
-                    .unwrap_or_default();
+                let metadata = serde_json::from_value(metadata_json).unwrap_or_default();
 
                 Ok(Some(Tenant {
                     id: TenantId::from_uuid(row.get("id")),
@@ -164,7 +167,7 @@ impl TenantRepository for PgTenantRepository {
             FROM tenants
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
-            "#
+            "#,
         )
         .bind(limit as i64)
         .bind(offset as i64)
@@ -185,12 +188,11 @@ impl TenantRepository for PgTenantRepository {
                 };
 
                 let settings_json: serde_json::Value = row.get("settings");
-                let settings: TenantSettings = serde_json::from_value(settings_json)
-                    .unwrap_or_default();
-                
+                let settings: TenantSettings =
+                    serde_json::from_value(settings_json).unwrap_or_default();
+
                 let metadata_json: serde_json::Value = row.get("metadata");
-                let metadata = serde_json::from_value(metadata_json)
-                    .unwrap_or_default();
+                let metadata = serde_json::from_value(metadata_json).unwrap_or_default();
 
                 Tenant {
                     id: TenantId::from_uuid(row.get("id")),
@@ -211,11 +213,15 @@ impl TenantRepository for PgTenantRepository {
 
     #[instrument(skip(self, tenant))]
     async fn update(&self, tenant: &Tenant) -> Result<Tenant> {
-        let settings_json = serde_json::to_value(&tenant.settings)
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
-        
-        let metadata_json = serde_json::to_value(&tenant.metadata)
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        let settings_json =
+            serde_json::to_value(&tenant.settings).map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
+
+        let metadata_json =
+            serde_json::to_value(&tenant.metadata).map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         let status_str = match tenant.status {
             TenantStatus::Active => "active",
@@ -229,7 +235,7 @@ impl TenantRepository for PgTenantRepository {
             UPDATE tenants
             SET name = $1, slug = $2, status = $3, settings = $4, metadata = $5, updated_at = $6
             WHERE id = $7
-            "#
+            "#,
         )
         .bind(&tenant.name)
         .bind(&tenant.slug)

@@ -48,7 +48,7 @@ impl SpiceDbClient {
     #[instrument(skip(config), fields(endpoint = %config.endpoint))]
     pub async fn new(config: SpiceDbConfig) -> Result<Self> {
         info!("Connecting to SpiceDB at {}", config.endpoint);
-        
+
         let endpoint = Endpoint::from_shared(config.endpoint.clone())
             .map_err(|e| SeparError::spicedb_error(format!("Invalid endpoint: {}", e)))?
             .connect_timeout(std::time::Duration::from_millis(config.connect_timeout_ms))
@@ -78,21 +78,26 @@ impl SpiceDbClient {
     }
 
     /// Create an authenticated request
+    #[allow(clippy::result_large_err)]
     pub fn create_request<T>(&self, inner: T) -> std::result::Result<Request<T>, Status> {
         let mut request = Request::new(inner);
-        
+
         if !self.token.is_empty() {
             let bearer = format!("Bearer {}", self.token);
             let metadata_value = MetadataValue::try_from(&bearer)
                 .map_err(|e| Status::internal(format!("Invalid token: {}", e)))?;
-            request.metadata_mut().insert("authorization", metadata_value);
+            request
+                .metadata_mut()
+                .insert("authorization", metadata_value);
         }
-        
+
         Ok(request)
     }
 
     /// Get permissions service client
-    pub fn permissions_client(&self) -> proto::permissions_service_client::PermissionsServiceClient<Channel> {
+    pub fn permissions_client(
+        &self,
+    ) -> proto::permissions_service_client::PermissionsServiceClient<Channel> {
         proto::permissions_service_client::PermissionsServiceClient::new(self.channel.clone())
     }
 
@@ -107,9 +112,10 @@ impl SpiceDbClient {
         debug!("Performing SpiceDB health check");
         // Try to read schema as a health check
         let mut client = self.schema_client();
-        let request = self.create_request(proto::ReadSchemaRequest {})
+        let request = self
+            .create_request(proto::ReadSchemaRequest {})
             .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
-        
+
         match client.read_schema(request).await {
             Ok(_) => Ok(true),
             Err(e) => {
@@ -124,15 +130,21 @@ impl SpiceDbClient {
     pub async fn write_schema(&self, schema: &str) -> Result<String> {
         info!("Writing schema to SpiceDB");
         let mut client = self.schema_client();
-        
-        let request = self.create_request(proto::WriteSchemaRequest {
-            schema: schema.to_string(),
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let response = client.write_schema(request).await
+        let request = self
+            .create_request(proto::WriteSchemaRequest {
+                schema: schema.to_string(),
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+
+        let response = client
+            .write_schema(request)
+            .await
             .map_err(|e| SeparError::spicedb_error(format!("Failed to write schema: {}", e)))?;
 
-        let written_at = response.into_inner().written_at
+        let written_at = response
+            .into_inner()
+            .written_at
             .map(|t| t.token)
             .unwrap_or_default();
 
@@ -145,11 +157,14 @@ impl SpiceDbClient {
     pub async fn read_schema(&self) -> Result<String> {
         debug!("Reading schema from SpiceDB");
         let mut client = self.schema_client();
-        
-        let request = self.create_request(proto::ReadSchemaRequest {})
+
+        let request = self
+            .create_request(proto::ReadSchemaRequest {})
             .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let response = client.read_schema(request).await
+        let response = client
+            .read_schema(request)
+            .await
             .map_err(|e| SeparError::spicedb_error(format!("Failed to read schema: {}", e)))?;
 
         Ok(response.into_inner().schema_text)
@@ -172,31 +187,35 @@ impl SpiceDbClient {
 
         let mut client = self.permissions_client();
 
-        let request = self.create_request(proto::CheckPermissionRequest {
-            resource: Some(proto::ObjectReference {
-                object_type: resource_type.to_string(),
-                object_id: resource_id.to_string(),
-            }),
-            permission: permission.to_string(),
-            subject: Some(proto::SubjectReference {
-                object: Some(proto::ObjectReference {
-                    object_type: subject_type.to_string(),
-                    object_id: subject_id.to_string(),
+        let request = self
+            .create_request(proto::CheckPermissionRequest {
+                resource: Some(proto::ObjectReference {
+                    object_type: resource_type.to_string(),
+                    object_id: resource_id.to_string(),
                 }),
-                optional_relation: String::new(),
-            }),
-            consistency: None,
-            context: None,
-            with_tracing: false,
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+                permission: permission.to_string(),
+                subject: Some(proto::SubjectReference {
+                    object: Some(proto::ObjectReference {
+                        object_type: subject_type.to_string(),
+                        object_id: subject_id.to_string(),
+                    }),
+                    optional_relation: String::new(),
+                }),
+                consistency: None,
+                context: None,
+                with_tracing: false,
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let response = client.check_permission(request).await
+        let response = client
+            .check_permission(request)
+            .await
             .map_err(|e| SeparError::spicedb_error(format!("Permission check failed: {}", e)))?;
 
         // PERMISSIONSHIP_HAS_PERMISSION = 2
         let allowed = response.into_inner().permissionship == 2;
         debug!("Permission check result: {}", allowed);
-        
+
         Ok(allowed)
     }
 
@@ -217,32 +236,37 @@ impl SpiceDbClient {
 
         let mut client = self.permissions_client();
 
-        let request = self.create_request(proto::WriteRelationshipsRequest {
-            updates: vec![proto::RelationshipUpdate {
-                operation: 1, // OPERATION_TOUCH
-                relationship: Some(proto::Relationship {
-                    resource: Some(proto::ObjectReference {
-                        object_type: resource_type.to_string(),
-                        object_id: resource_id.to_string(),
-                    }),
-                    relation: relation.to_string(),
-                    subject: Some(proto::SubjectReference {
-                        object: Some(proto::ObjectReference {
-                            object_type: subject_type.to_string(),
-                            object_id: subject_id.to_string(),
+        let request = self
+            .create_request(proto::WriteRelationshipsRequest {
+                updates: vec![proto::RelationshipUpdate {
+                    operation: 1, // OPERATION_TOUCH
+                    relationship: Some(proto::Relationship {
+                        resource: Some(proto::ObjectReference {
+                            object_type: resource_type.to_string(),
+                            object_id: resource_id.to_string(),
                         }),
-                        optional_relation: String::new(),
+                        relation: relation.to_string(),
+                        subject: Some(proto::SubjectReference {
+                            object: Some(proto::ObjectReference {
+                                object_type: subject_type.to_string(),
+                                object_id: subject_id.to_string(),
+                            }),
+                            optional_relation: String::new(),
+                        }),
+                        optional_caveat: None,
                     }),
-                    optional_caveat: None,
-                }),
-            }],
-            optional_preconditions: vec![],
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+                }],
+                optional_preconditions: vec![],
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let response = client.write_relationships(request).await
-            .map_err(|e| SeparError::spicedb_error(format!("Failed to write relationship: {}", e)))?;
+        let response = client.write_relationships(request).await.map_err(|e| {
+            SeparError::spicedb_error(format!("Failed to write relationship: {}", e))
+        })?;
 
-        let token = response.into_inner().written_at
+        let token = response
+            .into_inner()
+            .written_at
             .map(|t| t.token)
             .unwrap_or_default();
 
@@ -267,32 +291,37 @@ impl SpiceDbClient {
 
         let mut client = self.permissions_client();
 
-        let request = self.create_request(proto::WriteRelationshipsRequest {
-            updates: vec![proto::RelationshipUpdate {
-                operation: 2, // OPERATION_DELETE
-                relationship: Some(proto::Relationship {
-                    resource: Some(proto::ObjectReference {
-                        object_type: resource_type.to_string(),
-                        object_id: resource_id.to_string(),
-                    }),
-                    relation: relation.to_string(),
-                    subject: Some(proto::SubjectReference {
-                        object: Some(proto::ObjectReference {
-                            object_type: subject_type.to_string(),
-                            object_id: subject_id.to_string(),
+        let request = self
+            .create_request(proto::WriteRelationshipsRequest {
+                updates: vec![proto::RelationshipUpdate {
+                    operation: 2, // OPERATION_DELETE
+                    relationship: Some(proto::Relationship {
+                        resource: Some(proto::ObjectReference {
+                            object_type: resource_type.to_string(),
+                            object_id: resource_id.to_string(),
                         }),
-                        optional_relation: String::new(),
+                        relation: relation.to_string(),
+                        subject: Some(proto::SubjectReference {
+                            object: Some(proto::ObjectReference {
+                                object_type: subject_type.to_string(),
+                                object_id: subject_id.to_string(),
+                            }),
+                            optional_relation: String::new(),
+                        }),
+                        optional_caveat: None,
                     }),
-                    optional_caveat: None,
-                }),
-            }],
-            optional_preconditions: vec![],
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+                }],
+                optional_preconditions: vec![],
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let response = client.write_relationships(request).await
-            .map_err(|e| SeparError::spicedb_error(format!("Failed to delete relationship: {}", e)))?;
+        let response = client.write_relationships(request).await.map_err(|e| {
+            SeparError::spicedb_error(format!("Failed to delete relationship: {}", e))
+        })?;
 
-        let token = response.into_inner().written_at
+        let token = response
+            .into_inner()
+            .written_at
             .map(|t| t.token)
             .unwrap_or_default();
 
@@ -316,29 +345,36 @@ impl SpiceDbClient {
 
         let mut client = self.permissions_client();
 
-        let request = self.create_request(proto::LookupResourcesRequest {
-            resource_object_type: resource_type.to_string(),
-            permission: permission.to_string(),
-            subject: Some(proto::SubjectReference {
-                object: Some(proto::ObjectReference {
-                    object_type: subject_type.to_string(),
-                    object_id: subject_id.to_string(),
+        let request = self
+            .create_request(proto::LookupResourcesRequest {
+                resource_object_type: resource_type.to_string(),
+                permission: permission.to_string(),
+                subject: Some(proto::SubjectReference {
+                    object: Some(proto::ObjectReference {
+                        object_type: subject_type.to_string(),
+                        object_id: subject_id.to_string(),
+                    }),
+                    optional_relation: String::new(),
                 }),
-                optional_relation: String::new(),
-            }),
-            consistency: None,
-            context: None,
-            optional_cursor: None,
-            optional_limit: 0,
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+                consistency: None,
+                context: None,
+                optional_cursor: None,
+                optional_limit: 0,
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let mut stream = client.lookup_resources(request).await
+        let mut stream = client
+            .lookup_resources(request)
+            .await
             .map_err(|e| SeparError::spicedb_error(format!("Lookup resources failed: {}", e)))?
             .into_inner();
 
         let mut resources = Vec::new();
-        while let Some(response) = stream.message().await
-            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))? {
+        while let Some(response) = stream
+            .message()
+            .await
+            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))?
+        {
             resources.push(response.resource_object_id);
         }
 
@@ -362,28 +398,35 @@ impl SpiceDbClient {
 
         let mut client = self.permissions_client();
 
-        let request = self.create_request(proto::LookupSubjectsRequest {
-            resource: Some(proto::ObjectReference {
-                object_type: resource_type.to_string(),
-                object_id: resource_id.to_string(),
-            }),
-            permission: permission.to_string(),
-            subject_object_type: subject_type.to_string(),
-            optional_subject_relation: String::new(),
-            consistency: None,
-            context: None,
-            optional_concrete_limit: 0,
-            optional_cursor: None,
-            wildcard_option: 0,
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+        let request = self
+            .create_request(proto::LookupSubjectsRequest {
+                resource: Some(proto::ObjectReference {
+                    object_type: resource_type.to_string(),
+                    object_id: resource_id.to_string(),
+                }),
+                permission: permission.to_string(),
+                subject_object_type: subject_type.to_string(),
+                optional_subject_relation: String::new(),
+                consistency: None,
+                context: None,
+                optional_concrete_limit: 0,
+                optional_cursor: None,
+                wildcard_option: 0,
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let mut stream = client.lookup_subjects(request).await
+        let mut stream = client
+            .lookup_subjects(request)
+            .await
             .map_err(|e| SeparError::spicedb_error(format!("Lookup subjects failed: {}", e)))?
             .into_inner();
 
         let mut subjects = Vec::new();
-        while let Some(response) = stream.message().await
-            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))? {
+        while let Some(response) = stream
+            .message()
+            .await
+            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))?
+        {
             if let Some(subject) = response.subject {
                 subjects.push(subject.subject_object_id);
             }
@@ -395,6 +438,7 @@ impl SpiceDbClient {
 
     /// Read relationships matching a filter
     #[instrument(skip(self))]
+    #[allow(clippy::type_complexity)]
     pub async fn read_relationships(
         &self,
         resource_type: Option<&str>,
@@ -423,25 +467,36 @@ impl SpiceDbClient {
             }),
         };
 
-        let request = self.create_request(proto::ReadRelationshipsRequest {
-            relationship_filter: Some(relationship_filter),
-            consistency: None,
-            optional_limit: 1000, // Limit to 1000 results
-            optional_cursor: None,
-        }).map_err(|e| SeparError::spicedb_error(e.to_string()))?;
+        let request = self
+            .create_request(proto::ReadRelationshipsRequest {
+                relationship_filter: Some(relationship_filter),
+                consistency: None,
+                optional_limit: 1000, // Limit to 1000 results
+                optional_cursor: None,
+            })
+            .map_err(|e| SeparError::spicedb_error(e.to_string()))?;
 
-        let mut stream = client.read_relationships(request).await
+        let mut stream = client
+            .read_relationships(request)
+            .await
             .map_err(|e| SeparError::spicedb_error(format!("Read relationships failed: {}", e)))?
             .into_inner();
 
         let mut relationships = Vec::new();
-        while let Some(response) = stream.message().await
-            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))? {
+        while let Some(response) = stream
+            .message()
+            .await
+            .map_err(|e| SeparError::spicedb_error(format!("Stream error: {}", e)))?
+        {
             if let Some(rel) = response.relationship {
                 let resource = rel.resource.as_ref();
                 let subject = rel.subject.as_ref().and_then(|s| s.object.as_ref());
-                let subject_relation = rel.subject.as_ref().map(|s| s.optional_relation.clone()).filter(|r| !r.is_empty());
-                
+                let subject_relation = rel
+                    .subject
+                    .as_ref()
+                    .map(|s| s.optional_relation.clone())
+                    .filter(|r| !r.is_empty());
+
                 if let (Some(res), Some(sub)) = (resource, subject) {
                     relationships.push((
                         res.object_type.clone(),

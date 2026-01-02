@@ -59,7 +59,9 @@ pub struct CreateIdentityProviderRequest {
     pub jit_provisioning: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// Request to update an identity provider
 #[derive(Debug, Deserialize)]
@@ -137,7 +139,7 @@ pub async fn list_providers(
     Query(params): Query<ListProvidersParams>,
 ) -> Result<Json<ApiResponse<Vec<IdentityProviderDto>>>, (StatusCode, Json<ApiResponse<()>>)> {
     debug!("Listing identity providers with params: {:?}", params);
-    
+
     // TODO: Implement actual database query
     // For now, return placeholder
     Ok(Json(ApiResponse {
@@ -154,7 +156,7 @@ pub async fn get_provider(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<IdentityProviderDto>>, (StatusCode, Json<ApiResponse<()>>)> {
     debug!("Getting identity provider: {}", id);
-    
+
     // TODO: Implement actual database query
     Err((
         StatusCode::NOT_FOUND,
@@ -176,12 +178,15 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(request): Json<CreateIdentityProviderRequest>,
 ) -> Result<Json<ApiResponse<IdentityProviderDto>>, (StatusCode, Json<ApiResponse<()>>)> {
-    info!("Creating identity provider: {} ({})", request.name, request.provider_type);
-    
+    info!(
+        "Creating identity provider: {} ({})",
+        request.name, request.provider_type
+    );
+
     // TODO: Validate provider type
     // TODO: Create provider in database
     // TODO: Register with provider registry
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
         Json(ApiResponse {
@@ -204,10 +209,10 @@ pub async fn update_provider(
     Json(request): Json<UpdateIdentityProviderRequest>,
 ) -> Result<Json<ApiResponse<IdentityProviderDto>>, (StatusCode, Json<ApiResponse<()>>)> {
     info!("Updating identity provider: {}", id);
-    
+
     // TODO: Update provider in database
     // TODO: Re-register with provider registry if config changed
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
         Json(ApiResponse {
@@ -229,11 +234,11 @@ pub async fn delete_provider(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, (StatusCode, Json<ApiResponse<()>>)> {
     info!("Deleting identity provider: {}", id);
-    
+
     // TODO: Unregister from provider registry
     // TODO: Delete from database
     // TODO: Handle orphaned identity mappings
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
         Json(ApiResponse {
@@ -257,14 +262,18 @@ pub async fn trigger_sync(
 ) -> Result<Json<ApiResponse<SyncResultDto>>, (StatusCode, Json<ApiResponse<()>>)> {
     info!(
         "Triggering {} sync for provider: {}",
-        if request.full_sync { "full" } else { "incremental" },
+        if request.full_sync {
+            "full"
+        } else {
+            "incremental"
+        },
         id
     );
-    
+
     // TODO: Get provider from registry
     // TODO: Trigger sync via orchestrator
     // TODO: Return sync result
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
         Json(ApiResponse {
@@ -287,9 +296,9 @@ pub async fn get_sync_history(
     Query(pagination): Query<PaginationParams>,
 ) -> Result<Json<ApiResponse<Vec<SyncResultDto>>>, (StatusCode, Json<ApiResponse<()>>)> {
     debug!("Getting sync history for provider: {}", id);
-    
+
     // TODO: Query sync history from database
-    
+
     Ok(Json(ApiResponse {
         success: true,
         data: Some(vec![]),
@@ -304,10 +313,10 @@ pub async fn test_connection(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<ProviderHealthDto>>, (StatusCode, Json<ApiResponse<()>>)> {
     info!("Testing connection for provider: {}", id);
-    
+
     // TODO: Get provider from registry
     // TODO: Call test_connection on provider
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
         Json(ApiResponse {
@@ -328,13 +337,12 @@ pub async fn health_check(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<ProviderHealthDto>>>, (StatusCode, Json<ApiResponse<()>>)> {
     debug!("Checking health of all identity providers");
-    
+
     // TODO: Get health status from registry
-    
+
     Ok(Json(ApiResponse {
         success: true,
         data: Some(vec![]),
         error: None,
     }))
 }
-

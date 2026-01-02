@@ -71,10 +71,7 @@ pub async fn auth_middleware(
 }
 
 /// Tenant context middleware - extracts tenant from path or header
-pub async fn tenant_middleware(
-    mut request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn tenant_middleware(mut request: Request, next: Next) -> Result<Response, StatusCode> {
     // Try to get tenant from X-Tenant-ID header
     let tenant_id = request
         .headers()
@@ -112,10 +109,7 @@ pub async fn logging_middleware(request: Request, next: Next) -> Response {
 }
 
 /// API key authentication middleware
-pub async fn api_key_middleware(
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn api_key_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
     let api_key = request
         .headers()
         .get("X-API-Key")
@@ -124,20 +118,20 @@ pub async fn api_key_middleware(
     if let Some(key) = api_key {
         // In a real implementation, validate the API key against the database
         // and extract the associated tenant/service account
-        
+
         // For now, just pass through
         let prefix = if key.len() > 8 { &key[..8] } else { key };
-        info!("API key authentication attempted with prefix: {}...", prefix);
+        info!(
+            "API key authentication attempted with prefix: {}...",
+            prefix
+        );
     }
 
     Ok(next.run(request).await)
 }
 
 /// Rate limiting middleware (placeholder)
-pub async fn rate_limit_middleware(
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn rate_limit_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
     // In a real implementation, implement token bucket or sliding window rate limiting
     Ok(next.run(request).await)
 }

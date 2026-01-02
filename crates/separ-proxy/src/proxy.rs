@@ -1,8 +1,8 @@
 //! Main proxy server implementation
 
+use bytes::{BufMut, BytesMut};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use bytes::{BufMut, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info, instrument, warn, Instrument};
@@ -14,9 +14,8 @@ use crate::auth::{AuthResult, ProxyAuthenticator, ProxyPrincipal};
 use crate::config::ProxyConfig;
 use crate::connection::{Connection, ConnectionPool};
 use crate::protocol::{
-    build_auth_request, build_backend_key_data, build_error_response,
-    build_parameter_status, build_ready_for_query,
-    parse_password_message, parse_startup_message, AuthRequest,
+    build_auth_request, build_backend_key_data, build_error_response, build_parameter_status,
+    build_ready_for_query, parse_password_message, parse_startup_message, AuthRequest,
 };
 
 /// The main Separ Proxy server
@@ -45,8 +44,11 @@ impl SeparProxy {
     /// Start the proxy server
     #[instrument(skip(self))]
     pub async fn run(&self) -> Result<()> {
-        let listener = TcpListener::bind(&self.config.listen_addr).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        let listener = TcpListener::bind(&self.config.listen_addr)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
         info!("Separ Proxy listening on {}", self.config.listen_addr);
 
         // Spawn cleanup task
@@ -62,8 +64,9 @@ impl SeparProxy {
         });
 
         loop {
-            let (stream, addr) = listener.accept().await
-                .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+            let (stream, addr) = listener.accept().await.map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
             info!("New connection from {}", addr);
 
             let handler = ConnectionHandler {
@@ -96,7 +99,7 @@ impl ConnectionHandler {
     async fn handle(&self, mut client_stream: TcpStream, addr: SocketAddr) -> Result<()> {
         // Read startup message
         let startup = self.read_startup_message(&mut client_stream).await?;
-        
+
         let username = startup.user().unwrap_or("unknown").to_string();
         let database = startup.database().unwrap_or(&username).to_string();
 
@@ -104,21 +107,28 @@ impl ConnectionHandler {
 
         // Request password authentication
         let auth_request = build_auth_request(&AuthRequest::CleartextPassword);
-        client_stream.write_all(&auth_request).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        client_stream
+            .write_all(&auth_request)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // Read password
         let password = self.read_password(&mut client_stream).await?;
 
         // Authenticate
-        let principal = match self.authenticator.authenticate(
-            &username,
-            &password,
-            startup.get("tenant"),
-        ).await {
+        let principal = match self
+            .authenticator
+            .authenticate(&username, &password, startup.get("tenant"))
+            .await
+        {
             AuthResult::Success(principal) => principal,
             AuthResult::Failed(failure) => {
-                warn!("Authentication failed for {}: {}", username, failure.message);
+                warn!(
+                    "Authentication failed for {}: {}",
+                    username, failure.message
+                );
                 let error = build_error_response(
                     "FATAL",
                     "28P01",
@@ -128,11 +138,8 @@ impl ConnectionHandler {
                 return Ok(());
             }
             AuthResult::NotApplicable => {
-                let error = build_error_response(
-                    "FATAL",
-                    "28000",
-                    "no applicable authentication method",
-                );
+                let error =
+                    build_error_response("FATAL", "28000", "no applicable authentication method");
                 let _ = client_stream.write_all(&error).await;
                 return Ok(());
             }
@@ -140,23 +147,17 @@ impl ConnectionHandler {
 
         info!(
             "Authenticated {} as {} ({})",
-            username,
-            principal.identifier,
-            principal.tenant_id
+            username, principal.identifier, principal.tenant_id
         );
 
         // Register connection
-        let connection = match self.connection_pool.register_connection(
-            principal.clone(),
-            database.clone(),
-        ) {
+        let connection = match self
+            .connection_pool
+            .register_connection(principal.clone(), database.clone())
+        {
             Ok(conn) => conn,
             Err(e) => {
-                let error = build_error_response(
-                    "FATAL",
-                    "53300",
-                    &e.to_string(),
-                );
+                let error = build_error_response("FATAL", "53300", &e.to_string());
                 let _ = client_stream.write_all(&error).await;
                 return Ok(());
             }
@@ -178,36 +179,54 @@ impl ConnectionHandler {
         };
 
         // Forward startup to backend
-        self.forward_startup(&mut backend_stream, &startup, &principal).await?;
+        self.forward_startup(&mut backend_stream, &startup, &principal)
+            .await?;
 
         // Complete authentication with client
         let auth_ok = build_auth_request(&AuthRequest::Ok);
-        client_stream.write_all(&auth_ok).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        client_stream
+            .write_all(&auth_ok)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // Send parameter statuses
         let params = build_parameter_status("server_version", "15.0");
-        client_stream.write_all(&params).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        client_stream
+            .write_all(&params)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         let params = build_parameter_status("client_encoding", "UTF8");
-        client_stream.write_all(&params).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        client_stream
+            .write_all(&params)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // Send backend key data
         let conn_guard = connection.lock().await;
-        let key_data = build_backend_key_data(
-            conn_guard.id.0 as i32,
-            rand::random(),
-        );
+        let key_data = build_backend_key_data(conn_guard.id.0 as i32, rand::random());
         drop(conn_guard);
-        client_stream.write_all(&key_data).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        client_stream
+            .write_all(&key_data)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // Ready for query
         let ready = build_ready_for_query(b'I');
-        client_stream.write_all(&ready).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        client_stream
+            .write_all(&ready)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // Proxy messages bidirectionally
         self.proxy_messages(
@@ -215,14 +234,13 @@ impl ConnectionHandler {
             &mut backend_stream,
             connection.clone(),
             &principal,
-        ).await?;
+        )
+        .await?;
 
         // Cleanup
         let conn_guard = connection.lock().await;
-        self.connection_pool.unregister_connection(
-            conn_guard.id,
-            &principal.identifier,
-        );
+        self.connection_pool
+            .unregister_connection(conn_guard.id, &principal.identifier);
 
         Ok(())
     }
@@ -232,9 +250,13 @@ impl ConnectionHandler {
         stream: &mut TcpStream,
     ) -> Result<crate::protocol::StartupMessage> {
         let mut buf = vec![0u8; 8192];
-        let n = stream.read(&mut buf).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
-        
+        let n = stream
+            .read(&mut buf)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
+
         if n < 8 {
             return Err(SeparError::Internal {
                 message: "Invalid startup message".to_string(),
@@ -248,8 +270,12 @@ impl ConnectionHandler {
 
     async fn read_password(&self, stream: &mut TcpStream) -> Result<String> {
         let mut buf = vec![0u8; 8192];
-        let n = stream.read(&mut buf).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        let n = stream
+            .read(&mut buf)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         parse_password_message(&buf[..n]).map_err(|e| SeparError::Internal {
             message: format!("Failed to parse password: {}", e),
@@ -264,15 +290,15 @@ impl ConnectionHandler {
     ) -> Result<()> {
         // Build startup message with principal metadata
         let mut buf = BytesMut::new();
-        
+
         // Protocol version (3.0)
         buf.put_i32(196608);
-        
+
         // User (from principal)
         buf.put_slice(b"user\0");
         buf.put_slice(principal.identifier.as_bytes());
         buf.put_u8(0);
-        
+
         // Database
         if let Some(db) = startup.database() {
             buf.put_slice(b"database\0");
@@ -299,13 +325,21 @@ impl ConnectionHandler {
         msg.put_i32(length);
         msg.put(buf);
 
-        backend.write_all(&msg).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        backend
+            .write_all(&msg)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // Read and handle backend authentication
         let mut response = vec![0u8; 8192];
-        let _n = backend.read(&mut response).await
-            .map_err(|e| SeparError::Internal { message: e.to_string() })?;
+        let _n = backend
+            .read(&mut response)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: e.to_string(),
+            })?;
 
         // TODO: Handle backend authentication properly
         // For now, assume trust authentication on backend
@@ -335,7 +369,7 @@ impl ConnectionHandler {
                         Ok(n) => {
                             // Record activity
                             connection.lock().await.record_activity();
-                            
+
                             // TODO: Inspect query for authorization
                             // For now, pass through
                             backend.write_all(&client_buf[..n]).await
@@ -347,7 +381,7 @@ impl ConnectionHandler {
                         }
                     }
                 }
-                
+
                 // Backend to client
                 result = backend.read(&mut backend_buf) => {
                     match result {
@@ -370,7 +404,7 @@ impl ConnectionHandler {
     }
 }
 
+#[allow(dead_code)]
 fn rand_process_id() -> i32 {
     rand::random()
 }
-

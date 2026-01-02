@@ -73,22 +73,22 @@ pub struct IdentityProviderConfig {
     pub provider_type: ProviderType,
     pub name: String,
     pub display_name: Option<String>,
-    
+
     /// Provider-specific configuration (encrypted at rest)
     pub config: ProviderConfigDetails,
-    
+
     /// Feature flags
     pub features: ProviderFeatures,
-    
+
     /// Sync settings
     pub sync_settings: SyncSettings,
-    
+
     /// Domain associations (for automatic provider detection)
     pub domains: Vec<String>,
-    
+
     /// Priority for provider selection (lower = higher priority)
     pub priority: i32,
-    
+
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -188,9 +188,7 @@ impl Default for AzureAdConfig {
             client_id: String::new(),
             client_secret: String::new(),
             certificate_thumbprint: None,
-            graph_scopes: vec![
-                "https://graph.microsoft.com/.default".to_string(),
-            ],
+            graph_scopes: vec!["https://graph.microsoft.com/.default".to_string()],
             user_filter: None,
             group_filter: None,
             sync_service_principals: true,
@@ -635,31 +633,31 @@ pub struct ValidationOptions {
 pub trait IdentitySync: Send + Sync {
     /// Get the provider type
     fn provider_type(&self) -> ProviderType;
-    
+
     /// Get the provider configuration ID
     fn provider_id(&self) -> IdentityProviderId;
-    
+
     /// Sync all users from the provider
     async fn sync_users(&self) -> Result<Vec<SyncedUser>>;
-    
+
     /// Sync users incrementally (since last sync)
     async fn sync_users_incremental(&self, since: DateTime<Utc>) -> Result<Vec<SyncedUser>>;
-    
+
     /// Sync all groups from the provider
     async fn sync_groups(&self) -> Result<Vec<SyncedGroup>>;
-    
+
     /// Sync groups incrementally
     async fn sync_groups_incremental(&self, since: DateTime<Utc>) -> Result<Vec<SyncedGroup>>;
-    
+
     /// Get a specific user by external ID
     async fn get_user(&self, external_id: &str) -> Result<Option<SyncedUser>>;
-    
+
     /// Get a specific group by external ID
     async fn get_group(&self, external_id: &str) -> Result<Option<SyncedGroup>>;
-    
+
     /// Resolve group memberships for a user
     async fn get_user_groups(&self, user_external_id: &str) -> Result<Vec<SyncedGroup>>;
-    
+
     /// Test connectivity to the provider
     async fn test_connection(&self) -> Result<bool>;
 }
@@ -669,7 +667,7 @@ pub trait IdentitySync: Send + Sync {
 pub trait IdentitySyncApps: IdentitySync {
     /// Sync applications/service principals
     async fn sync_apps(&self) -> Result<Vec<SyncedApp>>;
-    
+
     /// Get a specific app by external ID
     async fn get_app(&self, external_id: &str) -> Result<Option<SyncedApp>>;
 }
@@ -679,17 +677,17 @@ pub trait IdentitySyncApps: IdentitySync {
 pub trait IdentityAuth: Send + Sync {
     /// Get the provider type
     fn provider_type(&self) -> ProviderType;
-    
+
     /// Get the provider configuration ID
     fn provider_id(&self) -> IdentityProviderId;
-    
+
     /// Validate an authentication token
     async fn validate_token(
         &self,
         token: &str,
         options: &ValidationOptions,
     ) -> Result<AuthenticatedPrincipal>;
-    
+
     /// Get authorization URL for OAuth/OIDC flow
     async fn get_authorization_url(
         &self,
@@ -697,14 +695,10 @@ pub trait IdentityAuth: Send + Sync {
         nonce: Option<&str>,
         redirect_uri: &str,
     ) -> Result<String>;
-    
+
     /// Exchange authorization code for tokens
-    async fn exchange_code(
-        &self,
-        code: &str,
-        redirect_uri: &str,
-    ) -> Result<TokenExchangeResult>;
-    
+    async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<TokenExchangeResult>;
+
     /// Refresh an access token
     async fn refresh_token(&self, refresh_token: &str) -> Result<TokenExchangeResult>;
 }
@@ -795,22 +789,25 @@ pub struct SyncError {
 pub trait IdentityProviderRepository: Send + Sync {
     /// Create a new provider configuration
     async fn create(&self, config: &IdentityProviderConfig) -> Result<IdentityProviderConfig>;
-    
+
     /// Get provider by ID
     async fn get_by_id(&self, id: IdentityProviderId) -> Result<Option<IdentityProviderConfig>>;
-    
+
     /// List all providers for a tenant
     async fn list_by_tenant(&self, tenant_id: TenantId) -> Result<Vec<IdentityProviderConfig>>;
-    
+
     /// List enabled providers for a tenant
-    async fn list_enabled_by_tenant(&self, tenant_id: TenantId) -> Result<Vec<IdentityProviderConfig>>;
-    
+    async fn list_enabled_by_tenant(
+        &self,
+        tenant_id: TenantId,
+    ) -> Result<Vec<IdentityProviderConfig>>;
+
     /// Find provider by domain
     async fn find_by_domain(&self, domain: &str) -> Result<Option<IdentityProviderConfig>>;
-    
+
     /// Update provider configuration
     async fn update(&self, config: &IdentityProviderConfig) -> Result<IdentityProviderConfig>;
-    
+
     /// Delete provider configuration
     async fn delete(&self, id: IdentityProviderId) -> Result<()>;
 }
@@ -826,7 +823,7 @@ pub trait IdentityMappingRepository: Send + Sync {
         external_id: &str,
         separ_user_id: UserId,
     ) -> Result<()>;
-    
+
     /// Get Separ user ID by external ID
     async fn get_user_by_external_id(
         &self,
@@ -834,7 +831,7 @@ pub trait IdentityMappingRepository: Send + Sync {
         provider_id: IdentityProviderId,
         external_id: &str,
     ) -> Result<Option<UserId>>;
-    
+
     /// Get external ID by Separ user ID
     async fn get_external_id_by_user(
         &self,
@@ -842,7 +839,7 @@ pub trait IdentityMappingRepository: Send + Sync {
         provider_id: IdentityProviderId,
         separ_user_id: UserId,
     ) -> Result<Option<String>>;
-    
+
     /// Create or update a group mapping
     async fn upsert_group_mapping(
         &self,
@@ -851,7 +848,7 @@ pub trait IdentityMappingRepository: Send + Sync {
         external_id: &str,
         separ_group_id: GroupId,
     ) -> Result<()>;
-    
+
     /// Get Separ group ID by external ID
     async fn get_group_by_external_id(
         &self,
@@ -859,8 +856,7 @@ pub trait IdentityMappingRepository: Send + Sync {
         provider_id: IdentityProviderId,
         external_id: &str,
     ) -> Result<Option<GroupId>>;
-    
+
     /// Delete all mappings for a provider
     async fn delete_by_provider(&self, provider_id: IdentityProviderId) -> Result<()>;
 }
-

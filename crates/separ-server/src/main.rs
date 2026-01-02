@@ -84,7 +84,10 @@ async fn initialize_services(settings: &Settings) -> Result<AppState> {
             pool
         }
         Err(e) => {
-            warn!("Failed to connect to PostgreSQL: {}. Using fallback mode.", e);
+            warn!(
+                "Failed to connect to PostgreSQL: {}. Using fallback mode.",
+                e
+            );
             // For development, we can continue without a database
             // In production, you'd want to fail here
             return Err(e.into());
@@ -119,7 +122,10 @@ async fn initialize_services(settings: &Settings) -> Result<AppState> {
     match auth_service.initialize_schema().await {
         Ok(()) => info!("SpiceDB schema initialized"),
         Err(e) => {
-            warn!("Failed to initialize SpiceDB schema: {}. Schema may already exist.", e);
+            warn!(
+                "Failed to initialize SpiceDB schema: {}. Schema may already exist.",
+                e
+            );
             // Don't fail - schema might already exist
         }
     }
