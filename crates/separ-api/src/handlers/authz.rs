@@ -7,14 +7,16 @@ use axum::{
 };
 use tracing::{debug, info};
 
-use separ_core::{AuthorizationService, Relationship, RelationshipFilter, Resource, Subject, SubjectType};
+use separ_core::{
+    AuthorizationService, Relationship, RelationshipFilter, Resource, Subject, SubjectType,
+};
 
 use crate::dto::{
     ApiError, ApiResponse, CheckPermissionRequest, CheckPermissionResponse,
     DeleteRelationshipRequest, LookupResourcesRequest, LookupResourcesResponse,
     LookupSubjectsRequest, LookupSubjectsResponse, ReadRelationshipsQuery,
-    ReadRelationshipsResponse, RelationshipDto, ResourceDto, SubjectDto,
-    WriteRelationshipRequest, WriteRelationshipResponse,
+    ReadRelationshipsResponse, RelationshipDto, ResourceDto, SubjectDto, WriteRelationshipRequest,
+    WriteRelationshipResponse,
 };
 use crate::state::AppState;
 

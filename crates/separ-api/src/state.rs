@@ -1,15 +1,14 @@
 //! Application state for API handlers
 
-use std::sync::Arc;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 use separ_db::repositories::{
-    PgTenantRepository, PgWorkspaceRepository, PgApplicationRepository,
-    PgUserRepository, PgGroupRepository, PgOAuthProviderRepository,
-    PgSyncConfigRepository, PgAuditRepository,
+    PgApplicationRepository, PgAuditRepository, PgGroupRepository, PgOAuthProviderRepository,
+    PgSyncConfigRepository, PgTenantRepository, PgUserRepository, PgWorkspaceRepository,
 };
-use separ_spicedb::SpiceDbAuthorizationService;
 use separ_oauth::JwtService;
+use separ_spicedb::SpiceDbAuthorizationService;
 
 /// Concrete application state with all services
 #[derive(Clone)]

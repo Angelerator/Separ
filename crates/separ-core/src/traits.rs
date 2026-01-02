@@ -1,10 +1,6 @@
 //! Core traits for the Separ authorization platform
 
-use crate::{
-    error::Result,
-    ids::*,
-    models::*,
-};
+use crate::{error::Result, ids::*, models::*};
 use async_trait::async_trait;
 
 // =============================================================================
@@ -91,7 +87,12 @@ pub trait TenantRepository: Send + Sync {
 pub trait WorkspaceRepository: Send + Sync {
     async fn create(&self, workspace: &Workspace) -> Result<Workspace>;
     async fn get_by_id(&self, id: WorkspaceId) -> Result<Option<Workspace>>;
-    async fn list_by_tenant(&self, tenant_id: TenantId, offset: u32, limit: u32) -> Result<Vec<Workspace>>;
+    async fn list_by_tenant(
+        &self,
+        tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Workspace>>;
     async fn update(&self, workspace: &Workspace) -> Result<Workspace>;
     async fn delete(&self, id: WorkspaceId) -> Result<()>;
 }
@@ -101,8 +102,17 @@ pub trait WorkspaceRepository: Send + Sync {
 pub trait ApplicationRepository: Send + Sync {
     async fn create(&self, application: &Application) -> Result<Application>;
     async fn get_by_id(&self, id: ApplicationId) -> Result<Option<Application>>;
-    async fn get_by_slug(&self, workspace_id: WorkspaceId, slug: &str) -> Result<Option<Application>>;
-    async fn list_by_workspace(&self, workspace_id: WorkspaceId, offset: u32, limit: u32) -> Result<Vec<Application>>;
+    async fn get_by_slug(
+        &self,
+        workspace_id: WorkspaceId,
+        slug: &str,
+    ) -> Result<Option<Application>>;
+    async fn list_by_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Application>>;
     async fn update(&self, application: &Application) -> Result<Application>;
     async fn delete(&self, id: ApplicationId) -> Result<()>;
 }
@@ -117,8 +127,17 @@ pub trait UserRepository: Send + Sync {
     async fn create(&self, user: &User) -> Result<User>;
     async fn get_by_id(&self, id: UserId) -> Result<Option<User>>;
     async fn get_by_email(&self, tenant_id: TenantId, email: &str) -> Result<Option<User>>;
-    async fn get_by_external_id(&self, tenant_id: TenantId, external_id: &str) -> Result<Option<User>>;
-    async fn list_by_tenant(&self, tenant_id: TenantId, offset: u32, limit: u32) -> Result<Vec<User>>;
+    async fn get_by_external_id(
+        &self,
+        tenant_id: TenantId,
+        external_id: &str,
+    ) -> Result<Option<User>>;
+    async fn list_by_tenant(
+        &self,
+        tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<User>>;
     async fn update(&self, user: &User) -> Result<User>;
     async fn delete(&self, id: UserId) -> Result<()>;
     async fn count_by_tenant(&self, tenant_id: TenantId) -> Result<u64>;
@@ -129,7 +148,12 @@ pub trait UserRepository: Send + Sync {
 pub trait GroupRepository: Send + Sync {
     async fn create(&self, group: &Group) -> Result<Group>;
     async fn get_by_id(&self, id: GroupId) -> Result<Option<Group>>;
-    async fn list_by_tenant(&self, tenant_id: TenantId, offset: u32, limit: u32) -> Result<Vec<Group>>;
+    async fn list_by_tenant(
+        &self,
+        tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Group>>;
     async fn update(&self, group: &Group) -> Result<Group>;
     async fn delete(&self, id: GroupId) -> Result<()>;
     async fn add_member(&self, group_id: GroupId, user_id: UserId) -> Result<()>;
@@ -163,11 +187,7 @@ pub trait OAuthHandler: Send + Sync {
     ) -> Result<String>;
 
     /// Exchange authorization code for tokens
-    async fn exchange_code(
-        &self,
-        provider: &OAuthProvider,
-        code: &str,
-    ) -> Result<TokenResponse>;
+    async fn exchange_code(&self, provider: &OAuthProvider, code: &str) -> Result<TokenResponse>;
 
     /// Validate and decode an ID token
     async fn validate_id_token(
@@ -177,11 +197,8 @@ pub trait OAuthHandler: Send + Sync {
     ) -> Result<IdTokenClaims>;
 
     /// Get user info from the provider
-    async fn get_user_info(
-        &self,
-        provider: &OAuthProvider,
-        access_token: &str,
-    ) -> Result<UserInfo>;
+    async fn get_user_info(&self, provider: &OAuthProvider, access_token: &str)
+        -> Result<UserInfo>;
 }
 
 /// Token response from OAuth provider
@@ -241,19 +258,29 @@ pub trait SyncConfigRepository: Send + Sync {
 pub trait ScimHandler: Send + Sync {
     /// Process SCIM user creation
     async fn create_user(&self, tenant_id: TenantId, scim_user: ScimUser) -> Result<User>;
-    
+
     /// Process SCIM user update
-    async fn update_user(&self, tenant_id: TenantId, external_id: &str, scim_user: ScimUser) -> Result<User>;
-    
+    async fn update_user(
+        &self,
+        tenant_id: TenantId,
+        external_id: &str,
+        scim_user: ScimUser,
+    ) -> Result<User>;
+
     /// Process SCIM user deletion
     async fn delete_user(&self, tenant_id: TenantId, external_id: &str) -> Result<()>;
-    
+
     /// Process SCIM group creation
     async fn create_group(&self, tenant_id: TenantId, scim_group: ScimGroup) -> Result<Group>;
-    
+
     /// Process SCIM group update
-    async fn update_group(&self, tenant_id: TenantId, external_id: &str, scim_group: ScimGroup) -> Result<Group>;
-    
+    async fn update_group(
+        &self,
+        tenant_id: TenantId,
+        external_id: &str,
+        scim_group: ScimGroup,
+    ) -> Result<Group>;
+
     /// Process SCIM group deletion
     async fn delete_group(&self, tenant_id: TenantId, external_id: &str) -> Result<()>;
 }
@@ -319,4 +346,3 @@ pub struct AuditFilter {
     pub from_timestamp: Option<chrono::DateTime<chrono::Utc>>,
     pub to_timestamp: Option<chrono::DateTime<chrono::Utc>>,
 }
-

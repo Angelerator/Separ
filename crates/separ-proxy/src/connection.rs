@@ -1,15 +1,15 @@
 //! Connection management and pooling
 
+use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
-use dashmap::DashMap;
 use tokio::net::TcpStream;
-use tokio::sync::{Mutex, RwLock};
-use tracing::{debug, info, warn};
+use tokio::sync::Mutex;
+use tracing::{info, warn};
 
-use separ_core::{Result, SeparError, TenantId, UserId};
+use separ_core::{Result, SeparError};
 
 use crate::auth::ProxyPrincipal;
 use crate::config::PoolConfig;
@@ -107,7 +107,8 @@ impl ConnectionPool {
     ) -> Result<Arc<Mutex<Connection>>> {
         // Check user limit
         let user_key = principal.identifier.clone();
-        let user_count = self.connections_by_user
+        let user_count = self
+            .connections_by_user
             .get(&user_key)
             .map(|c| *c)
             .unwrap_or(0);
@@ -138,7 +139,8 @@ impl ConnectionPool {
         let connection = Arc::new(Mutex::new(connection));
 
         // Register
-        self.active_connections.insert(connection_id, connection.clone());
+        self.active_connections
+            .insert(connection_id, connection.clone());
         *self.connections_by_user.entry(user_key).or_insert(0) += 1;
         self.total_connections.fetch_add(1, Ordering::Relaxed);
 
@@ -151,7 +153,7 @@ impl ConnectionPool {
     pub fn unregister_connection(&self, connection_id: ConnectionId, user_identifier: &str) {
         if self.active_connections.remove(&connection_id).is_some() {
             self.total_connections.fetch_sub(1, Ordering::Relaxed);
-            
+
             if let Some(mut count) = self.connections_by_user.get_mut(user_identifier) {
                 if *count > 0 {
                     *count -= 1;
@@ -164,7 +166,9 @@ impl ConnectionPool {
 
     /// Get connection by ID
     pub fn get_connection(&self, connection_id: ConnectionId) -> Option<Arc<Mutex<Connection>>> {
-        self.active_connections.get(&connection_id).map(|c| c.clone())
+        self.active_connections
+            .get(&connection_id)
+            .map(|c| c.clone())
     }
 
     /// Get current connection statistics
@@ -202,4 +206,3 @@ pub struct PoolStats {
     pub total_connections: u64,
     pub unique_users: usize,
 }
-

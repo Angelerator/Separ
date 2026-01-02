@@ -6,17 +6,15 @@
 //! - Updates Separ's user/group repositories
 //! - Maintains SpiceDB relationships
 
-use std::sync::Arc;
 use chrono::{DateTime, Utc};
+use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, instrument};
 
 use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId, UserId, GroupId,
-    Result, SeparError,
-    User, Group, UserStatus, UserRepository, GroupRepository,
-    AuthorizationService, Relationship, Resource, Subject, SubjectType,
+    identity::*, AuthorizationService, Group, GroupId, GroupRepository, IdentityProviderId,
+    Relationship, Resource, Result, SeparError, Subject, SubjectType, TenantId, User, UserId,
+    UserRepository, UserStatus,
 };
 
 use crate::registry::ProviderRegistry;
@@ -83,7 +81,8 @@ where
             provider_id
         );
 
-        let provider = self.registry
+        let provider = self
+            .registry
             .get_sync_provider(provider_id)
             .await
             .ok_or_else(|| SeparError::not_found("identity_provider", provider_id.to_string()))?;
@@ -216,7 +215,13 @@ where
         result.duration_ms = (result.completed_at - result.started_at).num_milliseconds() as u64;
 
         // Update status
-        if !result.errors.is_empty() && result.users_created + result.users_updated + result.groups_created + result.groups_updated == 0 {
+        if !result.errors.is_empty()
+            && result.users_created
+                + result.users_updated
+                + result.groups_created
+                + result.groups_updated
+                == 0
+        {
             result.status = SyncResultStatus::Failed;
         }
 
@@ -251,7 +256,11 @@ where
 
     /// Sync all providers for a tenant
     #[instrument(skip(self))]
-    pub async fn sync_tenant(&self, tenant_id: TenantId, full_sync: bool) -> Result<Vec<SyncResult>> {
+    pub async fn sync_tenant(
+        &self,
+        tenant_id: TenantId,
+        full_sync: bool,
+    ) -> Result<Vec<SyncResult>> {
         info!("Starting sync for tenant {}", tenant_id);
 
         let providers = self.registry.get_sync_providers_for_tenant(tenant_id).await;
@@ -301,7 +310,8 @@ where
         synced_user: &SyncedUser,
     ) -> Result<bool> {
         // Check if user already exists by external ID
-        let existing = self.identity_mapping
+        let existing = self
+            .identity_mapping
             .get_user_by_external_id(tenant_id, provider_id, &synced_user.external_id)
             .await?;
 
@@ -313,7 +323,11 @@ where
                 user.given_name = synced_user.given_name.clone();
                 user.family_name = synced_user.family_name.clone();
                 user.picture_url = synced_user.picture_url.clone();
-                user.status = if synced_user.active { UserStatus::Active } else { UserStatus::Inactive };
+                user.status = if synced_user.active {
+                    UserStatus::Active
+                } else {
+                    UserStatus::Inactive
+                };
                 user.email_verified = synced_user.email_verified;
                 user.updated_at = Utc::now();
 
@@ -334,7 +348,11 @@ where
                 picture_url: synced_user.picture_url.clone(),
                 locale: None,
                 timezone: None,
-                status: if synced_user.active { UserStatus::Active } else { UserStatus::Inactive },
+                status: if synced_user.active {
+                    UserStatus::Active
+                } else {
+                    UserStatus::Inactive
+                },
                 metadata: synced_user.attributes.clone(),
                 last_login_at: None,
                 created_at: Utc::now(),
@@ -345,7 +363,12 @@ where
 
             // Create mapping
             self.identity_mapping
-                .upsert_user_mapping(tenant_id, provider_id, &synced_user.external_id, created_user.id)
+                .upsert_user_mapping(
+                    tenant_id,
+                    provider_id,
+                    &synced_user.external_id,
+                    created_user.id,
+                )
                 .await?;
 
             // Create SpiceDB relationship
@@ -370,7 +393,8 @@ where
 
         // Sync group memberships
         for group_external_id in &synced_user.groups {
-            if let Some(group_id) = self.identity_mapping
+            if let Some(group_id) = self
+                .identity_mapping
                 .get_group_by_external_id(tenant_id, provider_id, group_external_id)
                 .await?
             {
@@ -404,7 +428,8 @@ where
         synced_group: &SyncedGroup,
     ) -> Result<bool> {
         // Check if group already exists by external ID
-        let existing = self.identity_mapping
+        let existing = self
+            .identity_mapping
             .get_group_by_external_id(tenant_id, provider_id, &synced_group.external_id)
             .await?;
 
@@ -435,7 +460,12 @@ where
 
             // Create mapping
             self.identity_mapping
-                .upsert_group_mapping(tenant_id, provider_id, &synced_group.external_id, created_group.id)
+                .upsert_group_mapping(
+                    tenant_id,
+                    provider_id,
+                    &synced_group.external_id,
+                    created_group.id,
+                )
                 .await?;
 
             // Create SpiceDB relationship
@@ -460,7 +490,8 @@ where
 
         // Sync nested group relationships
         for child_group_external_id in &synced_group.child_groups {
-            if let Some(child_group_id) = self.identity_mapping
+            if let Some(child_group_id) = self
+                .identity_mapping
                 .get_group_by_external_id(tenant_id, provider_id, child_group_external_id)
                 .await?
             {
@@ -498,17 +529,15 @@ where
 
     /// JIT (Just-In-Time) provision a user from an authenticated principal
     #[instrument(skip(self, principal))]
-    pub async fn jit_provision_user(
-        &self,
-        principal: &AuthenticatedPrincipal,
-    ) -> Result<UserId> {
+    pub async fn jit_provision_user(&self, principal: &AuthenticatedPrincipal) -> Result<UserId> {
         info!(
             "JIT provisioning user: {} from provider {}",
             principal.subject, principal.provider_id
         );
 
         // Check if user already exists
-        if let Some(user_id) = self.identity_mapping
+        if let Some(user_id) = self
+            .identity_mapping
             .get_user_by_external_id(
                 principal.tenant_id,
                 principal.provider_id,
@@ -574,9 +603,11 @@ where
             })
             .await?;
 
-        info!("JIT provisioned user: {} as {}", principal.subject, created_user.id);
+        info!(
+            "JIT provisioned user: {} as {}",
+            principal.subject, created_user.id
+        );
 
         Ok(created_user.id)
     }
 }
-

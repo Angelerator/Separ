@@ -1,7 +1,9 @@
 //! Unit and integration tests for separ-spicedb
 
+#[allow(unused_imports)]
 use super::*;
-use separ_core::{Resource, Subject, SubjectType, Relationship, RelationshipFilter};
+#[allow(unused_imports)]
+use separ_core::{Relationship, RelationshipFilter, Resource, Subject, SubjectType};
 
 // =============================================================================
 // Schema Tests
@@ -9,7 +11,7 @@ use separ_core::{Resource, Subject, SubjectType, Relationship, RelationshipFilte
 
 #[cfg(test)]
 mod schema_tests {
-    use super::*;
+
     use crate::schema::YEKTA_SCHEMA;
 
     #[test]
@@ -84,20 +86,28 @@ mod schema_tests {
     fn test_schema_is_valid_spicedb_format() {
         // Basic format validation
         let lines: Vec<&str> = YEKTA_SCHEMA.lines().collect();
-        
+
         // Check that definitions are properly formatted
-        let definition_count = lines.iter()
+        let definition_count = lines
+            .iter()
             .filter(|line| line.trim().starts_with("definition "))
             .count();
-        
-        assert!(definition_count >= 10, "Should have at least 10 definitions");
-        
+
+        assert!(
+            definition_count >= 10,
+            "Should have at least 10 definitions"
+        );
+
         // Check that we have permission declarations
-        let permission_count = lines.iter()
+        let permission_count = lines
+            .iter()
             .filter(|line| line.trim().starts_with("permission "))
             .count();
-        
-        assert!(permission_count >= 15, "Should have at least 15 permission declarations");
+
+        assert!(
+            permission_count >= 15,
+            "Should have at least 15 permission declarations"
+        );
     }
 }
 
@@ -126,7 +136,7 @@ mod client_tests {
             resource_type: Some("tenant".to_string()),
             ..Default::default()
         };
-        
+
         assert_eq!(filter.resource_type, Some("tenant".to_string()));
     }
 
@@ -140,7 +150,7 @@ mod client_tests {
             subject_id: Some("user456".to_string()),
             subject_relation: None,
         };
-        
+
         assert_eq!(filter.resource_type, Some("document".to_string()));
         assert_eq!(filter.resource_id, Some("doc123".to_string()));
         assert_eq!(filter.relation, Some("viewer".to_string()));
@@ -155,7 +165,7 @@ mod client_tests {
             id: "user_123".to_string(),
             relation: None,
         };
-        
+
         assert_eq!(subject.subject_type, SubjectType::User);
         assert_eq!(subject.id, "user_123");
     }
@@ -167,7 +177,7 @@ mod client_tests {
             id: "engineers".to_string(),
             relation: Some("member".to_string()),
         };
-        
+
         assert_eq!(subject.subject_type, SubjectType::Group);
         assert_eq!(subject.id, "engineers");
         assert_eq!(subject.relation, Some("member".to_string()));
@@ -179,7 +189,7 @@ mod client_tests {
             resource_type: "workspace".to_string(),
             id: "ws_123".to_string(),
         };
-        
+
         assert_eq!(resource.resource_type, "workspace");
         assert_eq!(resource.id, "ws_123");
     }
@@ -199,7 +209,7 @@ mod client_tests {
             },
             caveat: None,
         };
-        
+
         assert_eq!(relationship.resource.resource_type, "tenant");
         assert_eq!(relationship.resource.id, "tenant_456");
         assert_eq!(relationship.relation, "admin");
@@ -213,7 +223,7 @@ mod client_tests {
 
 #[cfg(test)]
 mod service_tests {
-    use super::*;
+
     use chrono::Utc;
     use separ_core::CheckResult;
 
@@ -224,7 +234,7 @@ mod service_tests {
             checked_at: Utc::now(),
             debug_trace: None,
         };
-        
+
         assert!(result.allowed);
         assert!(result.debug_trace.is_none());
     }
@@ -236,7 +246,7 @@ mod service_tests {
             checked_at: Utc::now(),
             debug_trace: Some("No matching relation found".to_string()),
         };
-        
+
         assert!(!result.allowed);
         assert!(result.debug_trace.is_some());
     }
@@ -248,10 +258,10 @@ mod service_tests {
             checked_at: Utc::now(),
             debug_trace: None,
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: CheckResult = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(result.allowed, deserialized.allowed);
     }
 }
@@ -276,12 +286,11 @@ mod integration_tests {
             eprintln!("Skipping: SpiceDB not available");
             return;
         }
-        
+
         let endpoint = std::env::var("SPICEDB_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:50051".to_string());
-        let token = std::env::var("SPICEDB_TOKEN")
-            .unwrap_or_else(|_| "supersecretkey".to_string());
-        
+        let token = std::env::var("SPICEDB_TOKEN").unwrap_or_else(|_| "supersecretkey".to_string());
+
         let config = crate::SpiceDbConfig {
             endpoint,
             token,
@@ -289,7 +298,7 @@ mod integration_tests {
             connect_timeout_ms: 5000,
             request_timeout_ms: 30000,
         };
-        
+
         let client = SpiceDbClient::new(config).await;
         assert!(client.is_ok(), "Should connect to SpiceDB");
     }
@@ -300,7 +309,7 @@ mod integration_tests {
         if !spicedb_available() {
             return;
         }
-        
+
         // This test would:
         // 1. Write a relationship (user:alice -> tenant:test_tenant#owner)
         // 2. Check permission (can user:alice manage tenant:test_tenant?)
@@ -314,7 +323,7 @@ mod integration_tests {
         if !spicedb_available() {
             return;
         }
-        
+
         // This test would:
         // 1. Create a tenant with an owner
         // 2. Create a workspace under the tenant
@@ -327,7 +336,7 @@ mod integration_tests {
         if !spicedb_available() {
             return;
         }
-        
+
         // This test would:
         // 1. Create a group with members
         // 2. Assign the group#member to a tenant as admin
@@ -340,7 +349,7 @@ mod integration_tests {
         if !spicedb_available() {
             return;
         }
-        
+
         // This test would:
         // 1. Create multiple resources with a user as viewer
         // 2. Lookup all resources the user can view
@@ -353,7 +362,7 @@ mod integration_tests {
         if !spicedb_available() {
             return;
         }
-        
+
         // This test would:
         // 1. Create a resource with multiple viewers
         // 2. Lookup all subjects that can view the resource
@@ -367,11 +376,10 @@ mod integration_tests {
 
 #[cfg(test)]
 mod schema_assertion_tests {
-    use super::*;
-    
+
     /// These tests validate the authorization model semantics
     /// They should be run with `zed validate` or similar tooling
-    
+
     #[test]
     fn test_tenant_owner_has_all_permissions() {
         // Assertion: tenant#owner should have:
@@ -382,9 +390,9 @@ mod schema_assertion_tests {
         // - manage_groups permission
         // - manage_oauth permission
         // - view_audit permission
-        
+
         let schema = crate::schema::YEKTA_SCHEMA;
-        
+
         // Verify owner is included in manage
         assert!(schema.contains("permission manage = owner"));
         // Verify owner is included in view (via manage)
@@ -394,7 +402,7 @@ mod schema_assertion_tests {
     #[test]
     fn test_platform_admin_inherits_to_tenant() {
         let schema = crate::schema::YEKTA_SCHEMA;
-        
+
         // Platform admin should be able to manage tenants
         assert!(schema.contains("platform->admin"));
     }
@@ -402,7 +410,7 @@ mod schema_assertion_tests {
     #[test]
     fn test_resource_permissions_flow_through_application() {
         let schema = crate::schema::YEKTA_SCHEMA;
-        
+
         // Resources should inherit from application
         assert!(schema.contains("application->manage"));
         assert!(schema.contains("application->view"));
@@ -411,7 +419,7 @@ mod schema_assertion_tests {
     #[test]
     fn test_group_member_relation_is_usable() {
         let schema = crate::schema::YEKTA_SCHEMA;
-        
+
         // Groups should allow their members to be used in other relations
         assert!(schema.contains("group#member"));
     }
@@ -419,9 +427,8 @@ mod schema_assertion_tests {
     #[test]
     fn test_service_account_can_act_like_user() {
         let schema = crate::schema::YEKTA_SCHEMA;
-        
+
         // Service accounts should be able to hold the same relations as users
         assert!(schema.contains("user | service_account"));
     }
 }
-

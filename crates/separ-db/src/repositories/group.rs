@@ -4,11 +4,10 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use tracing::instrument;
 
-use separ_core::{
-    Result, Group, GroupId, GroupRepository, User, UserId, TenantId, SeparError,
-};
+use separ_core::{Group, GroupId, GroupRepository, Result, SeparError, TenantId, User, UserId};
 
 /// PostgreSQL implementation of GroupRepository
+#[allow(dead_code)]
 pub struct PgGroupRepository {
     pool: PgPool,
 }
@@ -23,7 +22,9 @@ impl PgGroupRepository {
 impl GroupRepository for PgGroupRepository {
     #[instrument(skip(self, _group))]
     async fn create(&self, _group: &Group) -> Result<Group> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
@@ -32,13 +33,20 @@ impl GroupRepository for PgGroupRepository {
     }
 
     #[instrument(skip(self))]
-    async fn list_by_tenant(&self, _tenant_id: TenantId, _offset: u32, _limit: u32) -> Result<Vec<Group>> {
+    async fn list_by_tenant(
+        &self,
+        _tenant_id: TenantId,
+        _offset: u32,
+        _limit: u32,
+    ) -> Result<Vec<Group>> {
         Ok(vec![])
     }
 
     #[instrument(skip(self, _group))]
     async fn update(&self, _group: &Group) -> Result<Group> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
@@ -57,7 +65,12 @@ impl GroupRepository for PgGroupRepository {
     }
 
     #[instrument(skip(self))]
-    async fn list_members(&self, _group_id: GroupId, _offset: u32, _limit: u32) -> Result<Vec<User>> {
+    async fn list_members(
+        &self,
+        _group_id: GroupId,
+        _offset: u32,
+        _limit: u32,
+    ) -> Result<Vec<User>> {
         Ok(vec![])
     }
 }

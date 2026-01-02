@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument};
 
 use separ_core::{
-    AuthorizationService, CheckResult, Relationship, RelationshipFilter,
-    Resource, Result, Subject, SubjectType, SeparError,
+    AuthorizationService, CheckResult, Relationship, RelationshipFilter, Resource, Result,
+    SeparError, Subject, SubjectType,
 };
 
 use crate::client::SpiceDbClient;
@@ -74,14 +74,17 @@ impl AuthorizationService for SpiceDbAuthorizationService {
         );
 
         let subject_type = Self::subject_type_to_str(&subject.subject_type);
-        
-        let allowed = self.client.check_permission(
-            &resource.resource_type,
-            &resource.id,
-            permission,
-            subject_type,
-            &subject.id,
-        ).await?;
+
+        let allowed = self
+            .client
+            .check_permission(
+                &resource.resource_type,
+                &resource.id,
+                permission,
+                subject_type,
+                &subject.id,
+            )
+            .await?;
 
         Ok(CheckResult {
             allowed,
@@ -96,14 +99,16 @@ impl AuthorizationService for SpiceDbAuthorizationService {
         checks: Vec<(Subject, Resource, String)>,
     ) -> Result<Vec<CheckResult>> {
         debug!("Bulk checking {} permissions", checks.len());
-        
+
         // For now, do them sequentially. Could be optimized with SpiceDB's bulk check API
         let mut results = Vec::with_capacity(checks.len());
         for (subject, resource, permission) in checks {
-            let result = self.check_permission(&subject, &resource, &permission).await?;
+            let result = self
+                .check_permission(&subject, &resource, &permission)
+                .await?;
             results.push(result);
         }
-        
+
         Ok(results)
     }
 
@@ -113,25 +118,27 @@ impl AuthorizationService for SpiceDbAuthorizationService {
 
         let subject_type = Self::subject_type_to_str(&relationship.subject.subject_type);
 
-        self.client.write_relationship(
-            &relationship.resource.resource_type,
-            &relationship.resource.id,
-            &relationship.relation,
-            subject_type,
-            &relationship.subject.id,
-        ).await
+        self.client
+            .write_relationship(
+                &relationship.resource.resource_type,
+                &relationship.resource.id,
+                &relationship.relation,
+                subject_type,
+                &relationship.subject.id,
+            )
+            .await
     }
 
     #[instrument(skip(self))]
     async fn write_relationships(&self, relationships: &[Relationship]) -> Result<String> {
         debug!("Writing {} relationships", relationships.len());
-        
+
         // Write each relationship (could be optimized with batching)
         let mut last_token = String::new();
         for relationship in relationships {
             last_token = self.write_relationship(relationship).await?;
         }
-        
+
         Ok(last_token)
     }
 
@@ -141,13 +148,15 @@ impl AuthorizationService for SpiceDbAuthorizationService {
 
         let subject_type = Self::subject_type_to_str(&relationship.subject.subject_type);
 
-        self.client.delete_relationship(
-            &relationship.resource.resource_type,
-            &relationship.resource.id,
-            &relationship.relation,
-            subject_type,
-            &relationship.subject.id,
-        ).await
+        self.client
+            .delete_relationship(
+                &relationship.resource.resource_type,
+                &relationship.resource.id,
+                &relationship.relation,
+                subject_type,
+                &relationship.subject.id,
+            )
+            .await
     }
 
     #[instrument(skip(self))]
@@ -173,12 +182,10 @@ impl AuthorizationService for SpiceDbAuthorizationService {
 
         let subject_type = Self::subject_type_to_str(&subject.subject_type);
 
-        let resource_ids = self.client.lookup_resources(
-            resource_type,
-            permission,
-            subject_type,
-            &subject.id,
-        ).await?;
+        let resource_ids = self
+            .client
+            .lookup_resources(resource_type, permission, subject_type, &subject.id)
+            .await?;
 
         Ok(resource_ids
             .into_iter()
@@ -201,19 +208,22 @@ impl AuthorizationService for SpiceDbAuthorizationService {
             subject_type, permission, resource
         );
 
-        let subject_ids = self.client.lookup_subjects(
-            &resource.resource_type,
-            &resource.id,
-            permission,
-            subject_type,
-        ).await?;
+        let subject_ids = self
+            .client
+            .lookup_subjects(
+                &resource.resource_type,
+                &resource.id,
+                permission,
+                subject_type,
+            )
+            .await?;
 
         let parsed_type = Self::str_to_subject_type(subject_type);
 
         Ok(subject_ids
             .into_iter()
             .map(|id| Subject {
-                subject_type: parsed_type.clone(),
+                subject_type: parsed_type,
                 id,
                 relation: None,
             })
@@ -224,18 +234,21 @@ impl AuthorizationService for SpiceDbAuthorizationService {
     async fn read_relationships(&self, filter: &RelationshipFilter) -> Result<Vec<Relationship>> {
         debug!("Reading relationships with filter: {:?}", filter);
 
-        let results = self.client.read_relationships(
-            filter.resource_type.as_deref(),
-            filter.resource_id.as_deref(),
-            filter.relation.as_deref(),
-            filter.subject_type.as_deref(),
-            filter.subject_id.as_deref(),
-        ).await?;
+        let results = self
+            .client
+            .read_relationships(
+                filter.resource_type.as_deref(),
+                filter.resource_id.as_deref(),
+                filter.relation.as_deref(),
+                filter.subject_type.as_deref(),
+                filter.subject_id.as_deref(),
+            )
+            .await?;
 
         let relationships: Vec<Relationship> = results
             .into_iter()
-            .map(|(res_type, res_id, relation, sub_type, sub_id, sub_rel)| {
-                Relationship {
+            .map(
+                |(res_type, res_id, relation, sub_type, sub_id, sub_rel)| Relationship {
                     resource: Resource {
                         resource_type: res_type,
                         id: res_id,
@@ -247,8 +260,8 @@ impl AuthorizationService for SpiceDbAuthorizationService {
                         relation: sub_rel,
                     },
                     caveat: None,
-                }
-            })
+                },
+            )
             .collect();
 
         debug!("Found {} relationships", relationships.len());

@@ -6,20 +6,17 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, Validation};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
-use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId,
-    Result, SeparError,
-};
+use separ_core::{identity::*, IdentityProviderId, Result, SeparError, TenantId};
 
 use super::common::*;
 
 /// Generic OIDC Identity Provider
+#[allow(dead_code)]
 pub struct GenericOidcProvider {
     config: OidcConfig,
     provider_id: IdentityProviderId,
@@ -35,18 +32,19 @@ impl GenericOidcProvider {
     pub async fn new(provider_config: &IdentityProviderConfig) -> Result<Self> {
         let config = match &provider_config.config {
             ProviderConfigDetails::GenericOidc(c) => c.clone(),
-            _ => return Err(SeparError::InvalidInput {
-                message: "Expected OIDC configuration".to_string(),
-            }),
+            _ => {
+                return Err(SeparError::InvalidInput {
+                    message: "Expected OIDC configuration".to_string(),
+                })
+            }
         };
 
-        let http_client = HttpClient::new(
-            provider_config.sync_settings.max_retries,
-            1000,
-        )?;
+        let http_client = HttpClient::new(provider_config.sync_settings.max_retries, 1000)?;
 
         // Fetch OIDC discovery
-        let discovery = OidcDiscovery::fetch(&config.issuer_url, &http_client).await.ok();
+        let discovery = OidcDiscovery::fetch(&config.issuer_url, &http_client)
+            .await
+            .ok();
 
         Ok(Self {
             config,
@@ -61,27 +59,41 @@ impl GenericOidcProvider {
 
     /// Get authorization endpoint
     fn authorization_endpoint(&self) -> String {
-        self.config.authorization_endpoint.clone()
-            .or_else(|| self.discovery.as_ref().map(|d| d.authorization_endpoint.clone()))
+        self.config
+            .authorization_endpoint
+            .clone()
+            .or_else(|| {
+                self.discovery
+                    .as_ref()
+                    .map(|d| d.authorization_endpoint.clone())
+            })
             .unwrap_or_else(|| format!("{}/authorize", self.config.issuer_url))
     }
 
     /// Get token endpoint
     fn token_endpoint(&self) -> String {
-        self.config.token_endpoint.clone()
+        self.config
+            .token_endpoint
+            .clone()
             .or_else(|| self.discovery.as_ref().map(|d| d.token_endpoint.clone()))
             .unwrap_or_else(|| format!("{}/token", self.config.issuer_url))
     }
 
     /// Get userinfo endpoint
+    #[allow(dead_code)]
     fn userinfo_endpoint(&self) -> Option<String> {
-        self.config.userinfo_endpoint.clone()
-            .or_else(|| self.discovery.as_ref().and_then(|d| d.userinfo_endpoint.clone()))
+        self.config.userinfo_endpoint.clone().or_else(|| {
+            self.discovery
+                .as_ref()
+                .and_then(|d| d.userinfo_endpoint.clone())
+        })
     }
 
     /// Get JWKS URI
     fn jwks_uri(&self) -> String {
-        self.config.jwks_uri.clone()
+        self.config
+            .jwks_uri
+            .clone()
             .or_else(|| self.discovery.as_ref().map(|d| d.jwks_uri.clone()))
             .unwrap_or_else(|| format!("{}/.well-known/jwks.json", self.config.issuer_url))
     }
@@ -104,9 +116,10 @@ impl GenericOidcProvider {
     }
 
     /// Extract user info from claims using claim mappings
+    #[allow(dead_code)]
     fn extract_user_from_claims(&self, claims: &CommonClaims) -> SyncedUser {
-        let mappings = &self.config.claim_mappings;
-        
+        let _mappings = &self.config.claim_mappings;
+
         SyncedUser {
             external_id: claims.sub.clone(),
             email: claims.email.clone().unwrap_or_default(),
@@ -115,7 +128,9 @@ impl GenericOidcProvider {
                     "{} {}",
                     claims.given_name.as_deref().unwrap_or(""),
                     claims.family_name.as_deref().unwrap_or("")
-                ).trim().to_string()
+                )
+                .trim()
+                .to_string()
             }),
             given_name: claims.given_name.clone(),
             family_name: claims.family_name.clone(),
@@ -130,23 +145,24 @@ impl GenericOidcProvider {
     }
 
     /// Fetch user info from userinfo endpoint
+    #[allow(dead_code)]
     async fn fetch_userinfo(&self, access_token: &str) -> Result<Option<CommonClaims>> {
         let Some(endpoint) = self.userinfo_endpoint() else {
             return Ok(None);
         };
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .execute_with_retry(
-                self.http_client.inner()
+                self.http_client
+                    .inner()
                     .get(&endpoint)
-                    .bearer_auth(access_token)
+                    .bearer_auth(access_token),
             )
             .await?;
 
-        let claims: CommonClaims = response.json().await.map_err(|e| {
-            SeparError::AuthError {
-                message: format!("Failed to parse userinfo response: {}", e),
-            }
+        let claims: CommonClaims = response.json().await.map_err(|e| SeparError::AuthError {
+            message: format!("Failed to parse userinfo response: {}", e),
         })?;
 
         Ok(Some(claims))
@@ -195,7 +211,8 @@ impl IdentitySync for GenericOidcProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn test_connection(&self) -> Result<bool> {
         // Try to fetch JWKS
-        let result = self.jwks_cache
+        let result = self
+            .jwks_cache
             .get_or_fetch(&self.jwks_uri(), &self.http_client)
             .await;
         Ok(result.is_ok())
@@ -224,7 +241,8 @@ impl IdentityAuth for GenericOidcProvider {
         let kid = extract_jwt_kid(token)?;
 
         // Get JWKS
-        let jwks = self.jwks_cache
+        let jwks = self
+            .jwks_cache
             .get_or_fetch(&self.jwks_uri(), &self.http_client)
             .await?;
 
@@ -234,7 +252,7 @@ impl IdentityAuth for GenericOidcProvider {
         // Build validation
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[&self.issuer()]);
-        
+
         if !options.audiences.is_empty() {
             validation.set_audience(&options.audiences);
         } else {
@@ -260,14 +278,13 @@ impl IdentityAuth for GenericOidcProvider {
             display_name: claims.name.clone(),
             groups: claims.groups.clone().unwrap_or_default(),
             roles: claims.roles.clone().unwrap_or_default(),
-            scopes: claims.scope
+            scopes: claims
+                .scope
                 .as_ref()
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
-            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0)
-                .unwrap_or(Utc::now()),
-            expires_at: DateTime::from_timestamp(claims.exp, 0)
-                .unwrap_or(Utc::now()),
+            issued_at: DateTime::from_timestamp(claims.iat.unwrap_or(0), 0).unwrap_or(Utc::now()),
+            expires_at: DateTime::from_timestamp(claims.exp, 0).unwrap_or(Utc::now()),
             raw_claims: HashMap::new(),
         };
 
@@ -303,11 +320,7 @@ impl IdentityAuth for GenericOidcProvider {
     }
 
     #[instrument(skip(self, code), fields(provider_id = %self.provider_id))]
-    async fn exchange_code(
-        &self,
-        code: &str,
-        redirect_uri: &str,
-    ) -> Result<TokenExchangeResult> {
+    async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<TokenExchangeResult> {
         let params = [
             ("client_id", self.config.client_id.as_str()),
             ("client_secret", self.config.client_secret.as_str()),
@@ -316,19 +329,20 @@ impl IdentityAuth for GenericOidcProvider {
             ("grant_type", "authorization_code"),
         ];
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .execute_with_retry(
-                self.http_client.inner()
-                    .post(&self.token_endpoint())
-                    .form(&params)
+                self.http_client
+                    .inner()
+                    .post(self.token_endpoint())
+                    .form(&params),
             )
             .await?;
 
-        let token_response: OidcTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: OidcTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         // Validate ID token if present
         let principal = if let Some(id_token) = &token_response.id_token {
@@ -346,11 +360,14 @@ impl IdentityAuth for GenericOidcProvider {
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal,
@@ -366,27 +383,31 @@ impl IdentityAuth for GenericOidcProvider {
             ("grant_type", "refresh_token"),
         ];
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .execute_with_retry(
-                self.http_client.inner()
-                    .post(&self.token_endpoint())
-                    .form(&params)
+                self.http_client
+                    .inner()
+                    .post(self.token_endpoint())
+                    .form(&params),
             )
             .await?;
 
-        let token_response: OidcTokenResponse = response.json().await.map_err(|e| {
-            SeparError::AuthError {
+        let token_response: OidcTokenResponse =
+            response.json().await.map_err(|e| SeparError::AuthError {
                 message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+            })?;
 
         Ok(TokenExchangeResult {
             access_token: token_response.access_token,
-            token_type: token_response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: token_response
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             expires_in: token_response.expires_in.map(|e| e as u64),
             refresh_token: token_response.refresh_token,
             id_token: token_response.id_token,
-            scopes: token_response.scope
+            scopes: token_response
+                .scope
                 .map(|s| s.split(' ').map(String::from).collect())
                 .unwrap_or_default(),
             principal: None,
@@ -403,4 +424,3 @@ struct OidcTokenResponse {
     id_token: Option<String>,
     scope: Option<String>,
 }
-

@@ -99,7 +99,7 @@ mod model_tests {
             UserStatus::Suspended,
             UserStatus::PendingVerification,
         ];
-        
+
         for status in statuses {
             let json = serde_json::to_string(&status).unwrap();
             let deserialized: UserStatus = serde_json::from_str(&json).unwrap();
@@ -114,7 +114,7 @@ mod model_tests {
             id: "user123".to_string(),
             relation: None,
         };
-        
+
         assert_eq!(subject.subject_type, SubjectType::User);
         assert_eq!(subject.id, "user123");
         assert!(subject.relation.is_none());
@@ -127,7 +127,7 @@ mod model_tests {
             id: "group456".to_string(),
             relation: Some("member".to_string()),
         };
-        
+
         assert_eq!(subject.subject_type, SubjectType::Group);
         assert_eq!(subject.relation, Some("member".to_string()));
     }
@@ -138,7 +138,7 @@ mod model_tests {
             resource_type: "document".to_string(),
             id: "doc123".to_string(),
         };
-        
+
         assert_eq!(resource.resource_type, "document");
         assert_eq!(resource.id, "doc123");
     }
@@ -158,7 +158,7 @@ mod model_tests {
             },
             caveat: None,
         };
-        
+
         assert_eq!(relationship.relation, "viewer");
         assert!(relationship.caveat.is_none());
     }
@@ -167,7 +167,7 @@ mod model_tests {
     fn test_relationship_with_caveat() {
         let mut context = HashMap::new();
         context.insert("ip_range".to_string(), serde_json::json!("192.168.1.0/24"));
-        
+
         let relationship = Relationship {
             resource: Resource {
                 resource_type: "document".to_string(),
@@ -184,7 +184,7 @@ mod model_tests {
                 context,
             }),
         };
-        
+
         assert!(relationship.caveat.is_some());
         let caveat = relationship.caveat.unwrap();
         assert_eq!(caveat.name, "ip_whitelist");
@@ -197,7 +197,7 @@ mod model_tests {
             checked_at: Utc::now(),
             debug_trace: None,
         };
-        
+
         assert!(result.allowed);
         assert!(result.debug_trace.is_none());
     }
@@ -209,7 +209,7 @@ mod model_tests {
             checked_at: Utc::now(),
             debug_trace: Some("Permission denied: user lacks 'viewer' relation".to_string()),
         };
-        
+
         assert!(!result.allowed);
         assert!(result.debug_trace.is_some());
     }
@@ -223,7 +223,7 @@ mod model_tests {
             ApplicationType::Backend,
             ApplicationType::MachineToMachine,
         ];
-        
+
         for app_type in types {
             let json = serde_json::to_string(&app_type).unwrap();
             let deserialized: ApplicationType = serde_json::from_str(&json).unwrap();
@@ -241,7 +241,7 @@ mod model_tests {
             OAuthProviderType::Custom,
             OAuthProviderType::Saml,
         ];
-        
+
         for provider_type in types {
             let json = serde_json::to_string(&provider_type).unwrap();
             let deserialized: OAuthProviderType = serde_json::from_str(&json).unwrap();
@@ -263,7 +263,7 @@ mod model_tests {
             AuditResult::Denied,
             AuditResult::Error,
         ];
-        
+
         for result in results {
             let json = serde_json::to_string(&result).unwrap();
             let deserialized: AuditResult = serde_json::from_str(&json).unwrap();
@@ -279,7 +279,7 @@ mod model_tests {
             models::SyncType::LdapPull,
             models::SyncType::ApiPull,
         ];
-        
+
         for sync_type in types {
             let json = serde_json::to_string(&sync_type).unwrap();
             let deserialized: models::SyncType = serde_json::from_str(&json).unwrap();
@@ -302,7 +302,7 @@ mod error_tests {
             entity_type: "tenant".to_string(),
             id: "tenant_123".to_string(),
         };
-        
+
         let message = error.to_string();
         assert!(message.contains("tenant"));
         assert!(message.contains("tenant_123"));
@@ -314,7 +314,7 @@ mod error_tests {
             action: "view".to_string(),
             resource: "document:123".to_string(),
         };
-        
+
         let message = error.to_string();
         assert!(message.contains("view"));
         assert!(message.contains("document:123"));
@@ -325,7 +325,7 @@ mod error_tests {
         let error = SeparError::InvalidInput {
             message: "Invalid email format".to_string(),
         };
-        
+
         let message = error.to_string();
         assert!(message.contains("Invalid email format"));
     }
@@ -335,7 +335,7 @@ mod error_tests {
         let error = SeparError::Internal {
             message: "Database connection failed".to_string(),
         };
-        
+
         let message = error.to_string();
         assert!(message.contains("Database connection failed"));
     }
@@ -367,7 +367,10 @@ mod error_tests {
         assert!(matches!(not_found, SeparError::NotFound { .. }));
 
         let permission_denied = SeparError::permission_denied("write", "doc_456");
-        assert!(matches!(permission_denied, SeparError::PermissionDenied { .. }));
+        assert!(matches!(
+            permission_denied,
+            SeparError::PermissionDenied { .. }
+        ));
 
         let invalid_input = SeparError::invalid_input("Missing field");
         assert!(matches!(invalid_input, SeparError::InvalidInput { .. }));
@@ -392,7 +395,7 @@ mod identity_tests {
             ProviderType::GenericOidc,
             ProviderType::Direct,
         ];
-        
+
         for provider_type in types {
             let json = serde_json::to_string(&provider_type).unwrap();
             let deserialized: ProviderType = serde_json::from_str(&json).unwrap();
@@ -424,7 +427,7 @@ mod identity_tests {
             attributes: HashMap::new(),
             synced_at: Utc::now(),
         };
-        
+
         assert_eq!(user.display_name, "John Doe");
         assert_eq!(user.email, "john.doe@example.com");
         assert!(user.active);
@@ -443,7 +446,7 @@ mod identity_tests {
             attributes: HashMap::new(),
             synced_at: Utc::now(),
         };
-        
+
         assert_eq!(group.name, "Engineering");
         assert_eq!(group.members.len(), 2);
     }
@@ -460,7 +463,7 @@ mod identity_tests {
             attributes: HashMap::new(),
             synced_at: Utc::now(),
         };
-        
+
         assert_eq!(app.name, "My Service");
         assert!(app.enabled);
     }
@@ -468,7 +471,7 @@ mod identity_tests {
     #[test]
     fn test_provider_features_default() {
         let features = ProviderFeatures::default();
-        
+
         // Default should have all features disabled
         assert!(!features.sync_users);
         assert!(!features.sync_groups);
@@ -478,7 +481,7 @@ mod identity_tests {
     #[test]
     fn test_sync_settings_default() {
         let settings = SyncSettings::default();
-        
+
         // Default should have reasonable values
         assert!(settings.interval_secs.is_some());
         assert!(settings.full_sync_enabled);
@@ -492,7 +495,7 @@ mod identity_tests {
             identity::SyncResultStatus::PartialSuccess,
             identity::SyncResultStatus::Failed,
         ];
-        
+
         for status in statuses {
             let json = serde_json::to_string(&status).unwrap();
             let deserialized: identity::SyncResultStatus = serde_json::from_str(&json).unwrap();
@@ -508,7 +511,7 @@ mod identity_tests {
             PrincipalType::Application,
             PrincipalType::ManagedIdentity,
         ];
-        
+
         for principal_type in types {
             let json = serde_json::to_string(&principal_type).unwrap();
             let deserialized: PrincipalType = serde_json::from_str(&json).unwrap();
@@ -528,7 +531,7 @@ mod filter_tests {
     #[test]
     fn test_relationship_filter_default() {
         let filter = RelationshipFilter::default();
-        
+
         assert!(filter.resource_type.is_none());
         assert!(filter.resource_id.is_none());
         assert!(filter.relation.is_none());
@@ -542,7 +545,7 @@ mod filter_tests {
             resource_type: Some("tenant".to_string()),
             ..Default::default()
         };
-        
+
         assert_eq!(filter.resource_type, Some("tenant".to_string()));
         assert!(filter.resource_id.is_none());
     }
@@ -557,7 +560,7 @@ mod filter_tests {
             subject_id: Some("user456".to_string()),
             subject_relation: None,
         };
-        
+
         assert_eq!(filter.resource_type, Some("document".to_string()));
         assert_eq!(filter.resource_id, Some("doc123".to_string()));
         assert_eq!(filter.relation, Some("viewer".to_string()));

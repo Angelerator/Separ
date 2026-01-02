@@ -16,11 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
-use separ_core::{
-    identity::*,
-    IdentityProviderId, TenantId,
-    Result, SeparError,
-};
+use separ_core::{identity::*, IdentityProviderId, Result, SeparError, TenantId};
 
 /// LDAP / Active Directory Identity Provider
 pub struct LdapProvider {
@@ -35,9 +31,11 @@ impl LdapProvider {
     pub fn new(provider_config: &IdentityProviderConfig) -> Result<Self> {
         let config = match &provider_config.config {
             ProviderConfigDetails::Ldap(c) => c.clone(),
-            _ => return Err(SeparError::InvalidInput {
-                message: "Expected LDAP configuration".to_string(),
-            }),
+            _ => {
+                return Err(SeparError::InvalidInput {
+                    message: "Expected LDAP configuration".to_string(),
+                })
+            }
         };
 
         Ok(Self {
@@ -52,15 +50,13 @@ impl LdapProvider {
     async fn connect(&self) -> Result<ldap3::Ldap> {
         use ldap3::LdapConnSettings;
 
-        let settings = LdapConnSettings::new()
-            .set_starttls(self.config.start_tls);
+        let settings = LdapConnSettings::new().set_starttls(self.config.start_tls);
 
-        let (conn, mut ldap) = LdapConnAsync::with_settings(
-            settings,
-            &self.config.server_url,
-        ).await.map_err(|e| SeparError::Internal {
-            message: format!("LDAP connection failed: {}", e),
-        })?;
+        let (conn, mut ldap) = LdapConnAsync::with_settings(settings, &self.config.server_url)
+            .await
+            .map_err(|e| SeparError::Internal {
+                message: format!("LDAP connection failed: {}", e),
+            })?;
 
         ldap3::drive!(conn);
 
@@ -88,24 +84,30 @@ impl IdentitySync for LdapProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_users(&self) -> Result<Vec<SyncedUser>> {
         info!("Starting full user sync from LDAP");
-        
+
         #[cfg(feature = "ldap")]
         {
             let mut ldap = self.connect().await?;
             let mappings = &self.config.attribute_mappings;
-            
-            let (rs, _result) = ldap.search(
-                &self.config.user_base_dn,
-                Scope::Subtree,
-                &self.config.user_filter,
-                vec!["*"],
-            ).await.map_err(|e| SeparError::Internal {
-                message: format!("LDAP search failed: {}", e),
-            })?.success().map_err(|e| SeparError::Internal {
-                message: format!("LDAP search failed: {}", e),
-            })?;
 
-            let users = rs.into_iter()
+            let (rs, _result) = ldap
+                .search(
+                    &self.config.user_base_dn,
+                    Scope::Subtree,
+                    &self.config.user_filter,
+                    vec!["*"],
+                )
+                .await
+                .map_err(|e| SeparError::Internal {
+                    message: format!("LDAP search failed: {}", e),
+                })?
+                .success()
+                .map_err(|e| SeparError::Internal {
+                    message: format!("LDAP search failed: {}", e),
+                })?;
+
+            let users = rs
+                .into_iter()
                 .filter_map(|entry| {
                     let se = SearchEntry::construct(entry);
                     self.ldap_entry_to_user(&se, mappings)
@@ -113,7 +115,7 @@ impl IdentitySync for LdapProvider {
                 .collect();
 
             ldap.unbind().await.ok();
-            
+
             info!("Fetched {} users from LDAP", users.len());
             Ok(users)
         }
@@ -134,31 +136,35 @@ impl IdentitySync for LdapProvider {
     #[instrument(skip(self), fields(provider_id = %self.provider_id))]
     async fn sync_groups(&self) -> Result<Vec<SyncedGroup>> {
         info!("Starting full group sync from LDAP");
-        
+
         #[cfg(feature = "ldap")]
         {
             let group_base = match &self.config.group_base_dn {
                 Some(dn) => dn.clone(),
                 None => return Ok(vec![]),
             };
-            
-            let group_filter = self.config.group_filter.as_deref()
+
+            let group_filter = self
+                .config
+                .group_filter
+                .as_deref()
                 .unwrap_or("(objectClass=group)");
 
             let mut ldap = self.connect().await?;
-            
-            let (rs, _result) = ldap.search(
-                &group_base,
-                Scope::Subtree,
-                group_filter,
-                vec!["*"],
-            ).await.map_err(|e| SeparError::Internal {
-                message: format!("LDAP search failed: {}", e),
-            })?.success().map_err(|e| SeparError::Internal {
-                message: format!("LDAP search failed: {}", e),
-            })?;
 
-            let groups = rs.into_iter()
+            let (rs, _result) = ldap
+                .search(&group_base, Scope::Subtree, group_filter, vec!["*"])
+                .await
+                .map_err(|e| SeparError::Internal {
+                    message: format!("LDAP search failed: {}", e),
+                })?
+                .success()
+                .map_err(|e| SeparError::Internal {
+                    message: format!("LDAP search failed: {}", e),
+                })?;
+
+            let groups = rs
+                .into_iter()
                 .filter_map(|entry| {
                     let se = SearchEntry::construct(entry);
                     self.ldap_entry_to_group(&se)
@@ -166,7 +172,7 @@ impl IdentitySync for LdapProvider {
                 .collect();
 
             ldap.unbind().await.ok();
-            
+
             info!("Fetched {} groups from LDAP", groups.len());
             Ok(groups)
         }
@@ -218,10 +224,12 @@ impl IdentitySync for LdapProvider {
 
 #[cfg(feature = "ldap")]
 impl LdapProvider {
-    fn ldap_entry_to_user(&self, entry: &SearchEntry, mappings: &LdapAttributeMappings) -> Option<SyncedUser> {
-        let get_attr = |name: &str| -> Option<String> {
-            entry.attrs.get(name)?.first().cloned()
-        };
+    fn ldap_entry_to_user(
+        &self,
+        entry: &SearchEntry,
+        mappings: &LdapAttributeMappings,
+    ) -> Option<SyncedUser> {
+        let get_attr = |name: &str| -> Option<String> { entry.attrs.get(name)?.first().cloned() };
 
         let external_id = entry.dn.clone();
         let email = get_attr(&mappings.email)?;
@@ -230,15 +238,22 @@ impl LdapProvider {
         Some(SyncedUser {
             external_id,
             email,
-            display_name: mappings.display_name.as_ref()
+            display_name: mappings
+                .display_name
+                .as_ref()
                 .and_then(|attr| get_attr(attr))
                 .unwrap_or(username),
             given_name: mappings.given_name.as_ref().and_then(|attr| get_attr(attr)),
-            family_name: mappings.family_name.as_ref().and_then(|attr| get_attr(attr)),
+            family_name: mappings
+                .family_name
+                .as_ref()
+                .and_then(|attr| get_attr(attr)),
             picture_url: None,
             active: true,
             email_verified: true,
-            groups: mappings.member_of.as_ref()
+            groups: mappings
+                .member_of
+                .as_ref()
                 .and_then(|attr| entry.attrs.get(attr))
                 .cloned()
                 .unwrap_or_default(),
@@ -250,15 +265,17 @@ impl LdapProvider {
 
     fn ldap_entry_to_group(&self, entry: &SearchEntry) -> Option<SyncedGroup> {
         let mappings = &self.config.attribute_mappings;
-        let get_attr = |name: &str| -> Option<String> {
-            entry.attrs.get(name)?.first().cloned()
-        };
+        let get_attr = |name: &str| -> Option<String> { entry.attrs.get(name)?.first().cloned() };
 
         let external_id = entry.dn.clone();
-        let name = mappings.group_name.as_ref()
+        let name = mappings
+            .group_name
+            .as_ref()
             .and_then(|attr| get_attr(attr))?;
 
-        let members = mappings.group_member.as_ref()
+        let members = mappings
+            .group_member
+            .as_ref()
             .and_then(|attr| entry.attrs.get(attr))
             .cloned()
             .unwrap_or_default();
@@ -276,4 +293,3 @@ impl LdapProvider {
         })
     }
 }
-

@@ -6,13 +6,13 @@
 //! - Service account tokens
 //! - mTLS certificates
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use tracing::{debug, info, warn, instrument};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tracing::{debug, instrument, warn};
 
-use separ_core::{identity::*, Result, SeparError, TenantId, UserId};
+use separ_core::{identity::*, TenantId, UserId};
 use separ_identity::ProviderRegistry;
 
 use crate::config::{AuthConfig, AuthMethod};
@@ -74,12 +74,14 @@ pub struct ProxyAuthenticator {
     failed_attempts: DashMap<String, FailedAttempts>,
 }
 
+#[allow(dead_code)]
 struct CachedAuth {
     principal: ProxyPrincipal,
     cached_at: DateTime<Utc>,
     expires_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 struct FailedAttempts {
     count: u32,
     first_attempt: DateTime<Utc>,
@@ -162,12 +164,7 @@ impl ProxyAuthenticator {
     }
 
     /// Authenticate with JWT token
-    async fn auth_jwt(
-        &self,
-        username: &str,
-        token: &str,
-        tenant_hint: Option<&str>,
-    ) -> AuthResult {
+    async fn auth_jwt(&self, username: &str, token: &str, tenant_hint: Option<&str>) -> AuthResult {
         // Check if it looks like a JWT
         if !token.contains('.') || token.split('.').count() != 3 {
             return AuthResult::NotApplicable;
@@ -188,11 +185,17 @@ impl ProxyAuthenticator {
         };
 
         // Try to authenticate with provider registry
-        match self.provider_registry.authenticate_token(tenant_id, token).await {
+        match self
+            .provider_registry
+            .authenticate_token(tenant_id, token)
+            .await
+        {
             Ok(principal) => {
                 // Verify username matches if provided
                 if !username.is_empty() && username != "jwt" {
-                    let matches = principal.email.as_ref()
+                    let matches = principal
+                        .email
+                        .as_ref()
                         .map(|e| e == username || e.split('@').next() == Some(username))
                         .unwrap_or(false)
                         || principal.subject == username;
@@ -214,14 +217,16 @@ impl ProxyAuthenticator {
                     separ_id: principal.separ_id.map(|_| UserId::new()),
                     principal_type: match principal.principal_type {
                         PrincipalType::User => ProxyPrincipalType::User,
-                        PrincipalType::Service 
-                        | PrincipalType::Application 
+                        PrincipalType::Service
+                        | PrincipalType::Application
                         | PrincipalType::ManagedIdentity => ProxyPrincipalType::Service,
                     },
                     tenant_id,
                     identifier: principal.email.unwrap_or(principal.subject),
                     scopes: principal.scopes,
-                    metadata: principal.raw_claims.into_iter()
+                    metadata: principal
+                        .raw_claims
+                        .into_iter()
                         .map(|(k, v)| (k, v.to_string()))
                         .collect(),
                     authenticated_at: Utc::now(),
@@ -272,7 +277,10 @@ impl ProxyAuthenticator {
             return AuthResult::NotApplicable;
         }
 
-        debug!("Attempting service token authentication for user: {}", username);
+        debug!(
+            "Attempting service token authentication for user: {}",
+            username
+        );
 
         // TODO: Validate service token against Separ API
         // For now, return not implemented
@@ -287,8 +295,9 @@ impl ProxyAuthenticator {
     fn auth_trust(&self, username: &str, tenant_hint: Option<&str>) -> AuthResult {
         warn!("Using TRUST authentication mode - this should not be used in production!");
 
-        let tenant_id = self.resolve_tenant(tenant_hint, username)
-            .unwrap_or_else(TenantId::new);
+        let tenant_id = self
+            .resolve_tenant(tenant_hint, username)
+            .unwrap_or_default();
 
         AuthResult::Success(ProxyPrincipal {
             separ_id: None,
@@ -335,7 +344,7 @@ impl ProxyAuthenticator {
     /// Check token cache
     fn check_cache(&self, token: &str) -> Option<ProxyPrincipal> {
         let token_hash = self.hash_token(token);
-        
+
         if let Some(cached) = self.token_cache.get(&token_hash) {
             if Utc::now() < cached.expires_at {
                 debug!("Using cached authentication");
@@ -352,9 +361,10 @@ impl ProxyAuthenticator {
     fn cache_auth(&self, token: &str, principal: &ProxyPrincipal) {
         let token_hash = self.hash_token(token);
         let cache_duration = chrono::Duration::seconds(self.config.jwt.token_cache_secs as i64);
-        
+
         // Use earlier of token expiry or cache TTL
-        let expires_at = principal.expires_at
+        let expires_at = principal
+            .expires_at
             .map(|e| std::cmp::min(e, Utc::now() + cache_duration))
             .unwrap_or(Utc::now() + cache_duration);
 
@@ -370,7 +380,8 @@ impl ProxyAuthenticator {
 
     /// Record a failed authentication attempt
     fn record_failure(&self, identifier: &str) {
-        let mut attempts = self.failed_attempts
+        let mut attempts = self
+            .failed_attempts
             .entry(identifier.to_string())
             .or_insert_with(|| FailedAttempts {
                 count: 0,
@@ -397,7 +408,7 @@ impl ProxyAuthenticator {
 
     /// Hash a token for cache key
     fn hash_token(&self, token: &str) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(token.as_bytes());
         format!("{:x}", hasher.finalize())
@@ -406,14 +417,12 @@ impl ProxyAuthenticator {
     /// Clear expired cache entries (call periodically)
     pub fn cleanup_cache(&self) {
         let now = Utc::now();
-        
+
         self.token_cache.retain(|_, cached| cached.expires_at > now);
-        
+
         // Clear old failed attempts (keep for 24 hours)
         let cutoff = now - chrono::Duration::hours(24);
-        self.failed_attempts.retain(|_, attempts| {
-            attempts.last_attempt > cutoff
-        });
+        self.failed_attempts
+            .retain(|_, attempts| attempts.last_attempt > cutoff);
     }
 }
-

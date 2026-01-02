@@ -13,7 +13,7 @@ mod config_tests {
     #[test]
     fn test_auth_config_default() {
         let config = AuthConfig::default();
-        
+
         assert!(!config.methods.is_empty());
         assert_eq!(config.max_auth_attempts, 5);
         assert_eq!(config.ban_duration_secs, 300);
@@ -22,7 +22,7 @@ mod config_tests {
     #[test]
     fn test_jwt_config_default() {
         let config = JwtConfig::default();
-        
+
         assert!(config.audiences.is_empty());
         assert!(config.issuers.is_empty());
         assert_eq!(config.clock_skew_secs, 60);
@@ -32,7 +32,7 @@ mod config_tests {
     #[test]
     fn test_api_key_config_default() {
         let config = ApiKeyConfig::default();
-        
+
         assert!(config.enabled);
         assert_eq!(config.prefix, "sk_");
     }
@@ -40,7 +40,7 @@ mod config_tests {
     #[test]
     fn test_service_token_config_default() {
         let config = ServiceTokenConfig::default();
-        
+
         assert!(config.enabled);
         assert_eq!(config.prefix, "svc_");
     }
@@ -48,7 +48,7 @@ mod config_tests {
     #[test]
     fn test_pool_config_default() {
         let config = PoolConfig::default();
-        
+
         assert_eq!(config.max_connections_per_user, 10);
         assert_eq!(config.max_total_connections, 1000);
         assert_eq!(config.connection_timeout_secs, 30);
@@ -65,7 +65,7 @@ mod config_tests {
             AuthMethod::ScramSha256,
             AuthMethod::Trust,
         ];
-        
+
         for method in methods {
             let json = serde_json::to_string(&method).unwrap();
             let deserialized: AuthMethod = serde_json::from_str(&json).unwrap();
@@ -82,7 +82,7 @@ mod config_tests {
             ca_cert_path: Some("/etc/ssl/certs/ca.crt".to_string()),
             require_client_cert: true,
         };
-        
+
         assert!(config.require_client_cert);
         assert!(config.ca_cert_path.is_some());
     }
@@ -98,10 +98,10 @@ mod config_tests {
             pool: PoolConfig::default(),
             tls: None,
         };
-        
+
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: ProxyConfig = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(config.listen_addr, deserialized.listen_addr);
         assert_eq!(config.backend_addr, deserialized.backend_addr);
     }
@@ -124,7 +124,7 @@ mod protocol_tests {
                 ("database".to_string(), "testdb".to_string()),
             ],
         };
-        
+
         assert_eq!(startup.user(), Some("testuser"));
         assert_eq!(startup.database(), Some("testdb"));
     }
@@ -139,7 +139,7 @@ mod protocol_tests {
                 ("application_name".to_string(), "psql".to_string()),
             ],
         };
-        
+
         assert_eq!(startup.get("user"), Some("alice"));
         assert_eq!(startup.get("database"), Some("mydb"));
         assert_eq!(startup.get("application_name"), Some("psql"));
@@ -151,17 +151,17 @@ mod protocol_tests {
         let auth_ok = AuthRequest::Ok;
         let auth_cleartext = AuthRequest::CleartextPassword;
         let auth_md5 = AuthRequest::Md5Password { salt: [1, 2, 3, 4] };
-        
+
         match auth_ok {
-            AuthRequest::Ok => assert!(true),
+            AuthRequest::Ok => {} // expected
             _ => panic!("Expected AuthRequest::Ok"),
         }
-        
+
         match auth_cleartext {
-            AuthRequest::CleartextPassword => assert!(true),
+            AuthRequest::CleartextPassword => {} // expected
             _ => panic!("Expected AuthRequest::CleartextPassword"),
         }
-        
+
         match auth_md5 {
             AuthRequest::Md5Password { salt } => assert_eq!(salt, [1, 2, 3, 4]),
             _ => panic!("Expected AuthRequest::Md5Password"),
@@ -174,7 +174,7 @@ mod protocol_tests {
         let error_auth_failed = "28P01"; // Authentication failed
         let error_invalid_catalog = "3D000"; // Invalid catalog name
         let error_connection_failed = "08006"; // Connection failure
-        
+
         assert_eq!(error_auth_failed.len(), 5);
         assert_eq!(error_invalid_catalog.len(), 5);
         assert_eq!(error_connection_failed.len(), 5);
@@ -201,10 +201,10 @@ mod auth_tests {
     #[test]
     fn test_api_key_detection() {
         let config = ApiKeyConfig::default();
-        
+
         let valid_key = "sk_test_123456789";
         let invalid_key = "not_an_api_key";
-        
+
         assert!(valid_key.starts_with(&config.prefix));
         assert!(!invalid_key.starts_with(&config.prefix));
     }
@@ -212,10 +212,10 @@ mod auth_tests {
     #[test]
     fn test_service_token_detection() {
         let config = ServiceTokenConfig::default();
-        
+
         let valid_token = "svc_prod_abcdefghij";
         let invalid_token = "regular_password";
-        
+
         assert!(valid_token.starts_with(&config.prefix));
         assert!(!invalid_token.starts_with(&config.prefix));
     }
@@ -228,18 +228,23 @@ mod auth_tests {
             ProxyPrincipalType::ApiKey,
             ProxyPrincipalType::System,
         ];
-        
+
         for t in &types {
-            assert!(matches!(t, ProxyPrincipalType::User | ProxyPrincipalType::Service | 
-                             ProxyPrincipalType::ApiKey | ProxyPrincipalType::System));
+            assert!(matches!(
+                t,
+                ProxyPrincipalType::User
+                    | ProxyPrincipalType::Service
+                    | ProxyPrincipalType::ApiKey
+                    | ProxyPrincipalType::System
+            ));
         }
     }
 
     #[test]
     fn test_token_hash_deterministic() {
         // Simple test that hashing is deterministic
-        use sha2::{Sha256, Digest};
-        
+        use sha2::{Digest, Sha256};
+
         let token = "test_token_12345";
         let hash1: String = {
             let mut hasher = Sha256::new();
@@ -251,17 +256,17 @@ mod auth_tests {
             hasher.update(token.as_bytes());
             format!("{:x}", hasher.finalize())
         };
-        
+
         assert_eq!(hash1, hash2);
     }
 
     #[test]
     fn test_token_hash_different_tokens() {
-        use sha2::{Sha256, Digest};
-        
+        use sha2::{Digest, Sha256};
+
         let token1 = "token_a";
         let token2 = "token_b";
-        
+
         let hash1: String = {
             let mut hasher = Sha256::new();
             hasher.update(token1.as_bytes());
@@ -272,7 +277,7 @@ mod auth_tests {
             hasher.update(token2.as_bytes());
             format!("{:x}", hasher.finalize())
         };
-        
+
         assert_ne!(hash1, hash2);
     }
 }
@@ -293,7 +298,7 @@ mod pool_tests {
             connection_timeout_secs: 30,
             idle_timeout_secs: 300,
         };
-        
+
         assert!(config.max_connections_per_user <= config.max_total_connections);
         assert!(config.connection_timeout_secs < config.idle_timeout_secs);
     }
@@ -301,9 +306,9 @@ mod pool_tests {
     #[test]
     fn test_connection_id_uniqueness() {
         use uuid::Uuid;
-        
+
         let ids: Vec<Uuid> = (0..100).map(|_| Uuid::new_v4()).collect();
-        
+
         // Check all are unique
         let unique_count = ids.iter().collect::<std::collections::HashSet<_>>().len();
         assert_eq!(unique_count, ids.len());

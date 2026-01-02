@@ -165,7 +165,9 @@ pub mod proto {
     }
 
     pub mod relationship_update {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+        #[derive(
+            Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration,
+        )]
         #[repr(i32)]
         pub enum Operation {
             Unspecified = 0,
@@ -184,7 +186,9 @@ pub mod proto {
     }
 
     pub mod precondition {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+        #[derive(
+            Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration,
+        )]
         #[repr(i32)]
         pub enum Operation {
             Unspecified = 0,
@@ -385,24 +389,36 @@ pub mod proto {
             pub async fn read_schema(
                 &mut self,
                 request: impl tonic::IntoRequest<super::ReadSchemaRequest>,
-            ) -> std::result::Result<tonic::Response<super::ReadSchemaResponse>, tonic::Status> {
+            ) -> std::result::Result<tonic::Response<super::ReadSchemaResponse>, tonic::Status>
+            {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.SchemaService/ReadSchema");
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.SchemaService/ReadSchema",
+                );
                 self.inner.unary(request.into_request(), path, codec).await
             }
 
             pub async fn write_schema(
                 &mut self,
                 request: impl tonic::IntoRequest<super::WriteSchemaRequest>,
-            ) -> std::result::Result<tonic::Response<super::WriteSchemaResponse>, tonic::Status> {
+            ) -> std::result::Result<tonic::Response<super::WriteSchemaResponse>, tonic::Status>
+            {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.SchemaService/WriteSchema");
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.SchemaService/WriteSchema",
+                );
                 self.inner.unary(request.into_request(), path, codec).await
             }
         }
@@ -434,61 +450,105 @@ pub mod proto {
             pub async fn check_permission(
                 &mut self,
                 request: impl tonic::IntoRequest<super::CheckPermissionRequest>,
-            ) -> std::result::Result<tonic::Response<super::CheckPermissionResponse>, tonic::Status> {
+            ) -> std::result::Result<tonic::Response<super::CheckPermissionResponse>, tonic::Status>
+            {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/CheckPermission");
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.PermissionsService/CheckPermission",
+                );
                 self.inner.unary(request.into_request(), path, codec).await
             }
 
             pub async fn write_relationships(
                 &mut self,
                 request: impl tonic::IntoRequest<super::WriteRelationshipsRequest>,
-            ) -> std::result::Result<tonic::Response<super::WriteRelationshipsResponse>, tonic::Status> {
+            ) -> std::result::Result<
+                tonic::Response<super::WriteRelationshipsResponse>,
+                tonic::Status,
+            > {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/WriteRelationships");
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.PermissionsService/WriteRelationships",
+                );
                 self.inner.unary(request.into_request(), path, codec).await
             }
 
             pub async fn lookup_resources(
                 &mut self,
                 request: impl tonic::IntoRequest<super::LookupResourcesRequest>,
-            ) -> std::result::Result<tonic::Response<tonic::Streaming<super::LookupResourcesResponse>>, tonic::Status> {
+            ) -> std::result::Result<
+                tonic::Response<tonic::Streaming<super::LookupResourcesResponse>>,
+                tonic::Status,
+            > {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/LookupResources");
-                self.inner.server_streaming(request.into_request(), path, codec).await
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.PermissionsService/LookupResources",
+                );
+                self.inner
+                    .server_streaming(request.into_request(), path, codec)
+                    .await
             }
 
             pub async fn lookup_subjects(
                 &mut self,
                 request: impl tonic::IntoRequest<super::LookupSubjectsRequest>,
-            ) -> std::result::Result<tonic::Response<tonic::Streaming<super::LookupSubjectsResponse>>, tonic::Status> {
+            ) -> std::result::Result<
+                tonic::Response<tonic::Streaming<super::LookupSubjectsResponse>>,
+                tonic::Status,
+            > {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/LookupSubjects");
-                self.inner.server_streaming(request.into_request(), path, codec).await
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.PermissionsService/LookupSubjects",
+                );
+                self.inner
+                    .server_streaming(request.into_request(), path, codec)
+                    .await
             }
 
             pub async fn read_relationships(
                 &mut self,
                 request: impl tonic::IntoRequest<super::ReadRelationshipsRequest>,
-            ) -> std::result::Result<tonic::Response<tonic::Streaming<super::ReadRelationshipsResponse>>, tonic::Status> {
+            ) -> std::result::Result<
+                tonic::Response<tonic::Streaming<super::ReadRelationshipsResponse>>,
+                tonic::Status,
+            > {
                 self.inner.ready().await.map_err(|e| {
-                    tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
                 })?;
                 let codec = tonic::codec::ProstCodec::default();
-                let path = http::uri::PathAndQuery::from_static("/authzed.api.v1.PermissionsService/ReadRelationships");
-                self.inner.server_streaming(request.into_request(), path, codec).await
+                let path = http::uri::PathAndQuery::from_static(
+                    "/authzed.api.v1.PermissionsService/ReadRelationships",
+                );
+                self.inner
+                    .server_streaming(request.into_request(), path, codec)
+                    .await
             }
         }
     }

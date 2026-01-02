@@ -1,11 +1,11 @@
 //! Sync orchestration service
 
 use std::sync::Arc;
-use tracing::{debug, info, instrument, warn, error};
+use tracing::{error, info, instrument};
 
 use separ_core::{
-    Result, SyncConfig, SyncConfigDetails, SyncStatus, SyncType, TenantId, SeparError,
-    UserRepository, GroupRepository, AuthorizationService, SyncConfigRepository,
+    AuthorizationService, GroupRepository, Result, SeparError, SyncConfig, SyncConfigDetails,
+    SyncConfigRepository, SyncStatus, SyncType, TenantId, UserRepository,
 };
 
 /// Sync orchestration service
@@ -46,7 +46,8 @@ where
     /// Trigger a sync for a specific configuration
     #[instrument(skip(self))]
     pub async fn trigger_sync(&self, config_id: separ_core::SyncConfigId) -> Result<SyncResult> {
-        let config = self.sync_config_repo
+        let config = self
+            .sync_config_repo
             .get_by_id(config_id)
             .await?
             .ok_or_else(|| SeparError::not_found("sync_config", config_id.to_string()))?;
@@ -55,7 +56,10 @@ where
             return Err(SeparError::invalid_input("Sync configuration is disabled"));
         }
 
-        info!("Starting sync for config {} (type: {:?})", config.name, config.sync_type);
+        info!(
+            "Starting sync for config {} (type: {:?})",
+            config.name, config.sync_type
+        );
 
         let result = match config.sync_type {
             SyncType::Scim => {
@@ -76,12 +80,8 @@ where
                     errors: vec![],
                 }
             }
-            SyncType::LdapPull => {
-                self.sync_ldap(&config).await?
-            }
-            SyncType::ApiPull => {
-                self.sync_api(&config).await?
-            }
+            SyncType::LdapPull => self.sync_ldap(&config).await?,
+            SyncType::ApiPull => self.sync_api(&config).await?,
         };
 
         // Update sync status
@@ -97,19 +97,12 @@ where
 
     /// Sync from LDAP
     async fn sync_ldap(&self, config: &SyncConfig) -> Result<SyncResult> {
-        let SyncConfigDetails::LdapPull {
-            server_url,
-            bind_dn,
-            base_dn,
-            user_filter,
-            group_filter,
-            ..
-        } = &config.config else {
+        let SyncConfigDetails::LdapPull { server_url, .. } = &config.config else {
             return Err(SeparError::invalid_input("Invalid LDAP config"));
         };
 
         info!("Syncing from LDAP server: {}", server_url);
-        
+
         // In a real implementation, we would:
         // 1. Connect to LDAP server
         // 2. Query users matching user_filter
@@ -128,11 +121,7 @@ where
 
     /// Sync from external API
     async fn sync_api(&self, config: &SyncConfig) -> Result<SyncResult> {
-        let SyncConfigDetails::ApiPull {
-            endpoint_url,
-            auth_type,
-            ..
-        } = &config.config else {
+        let SyncConfigDetails::ApiPull { endpoint_url, .. } = &config.config else {
             return Err(SeparError::invalid_input("Invalid API config"));
         };
 
@@ -166,16 +155,18 @@ where
 
             // Check if it's time to sync based on interval
             let should_sync = match &config.config {
-                SyncConfigDetails::LdapPull { sync_interval_secs, .. } |
-                SyncConfigDetails::ApiPull { sync_interval_secs, .. } => {
-                    match config.last_sync_at {
-                        Some(last_sync) => {
-                            let elapsed = chrono::Utc::now() - last_sync;
-                            elapsed.num_seconds() as u32 >= *sync_interval_secs
-                        }
-                        None => true,
-                    }
+                SyncConfigDetails::LdapPull {
+                    sync_interval_secs, ..
                 }
+                | SyncConfigDetails::ApiPull {
+                    sync_interval_secs, ..
+                } => match config.last_sync_at {
+                    Some(last_sync) => {
+                        let elapsed = chrono::Utc::now() - last_sync;
+                        elapsed.num_seconds() as u32 >= *sync_interval_secs
+                    }
+                    None => true,
+                },
                 _ => false, // SCIM and Webhook are push-based
             };
 
@@ -207,4 +198,3 @@ pub struct SyncResult {
     pub groups_synced: u32,
     pub errors: Vec<String>,
 }
-

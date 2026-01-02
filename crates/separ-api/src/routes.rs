@@ -73,7 +73,10 @@ fn authz_routes(state: AppState) -> Router {
         .route("/check", post(handlers::authz::check_permission))
         .route("/relationships", get(handlers::authz::read_relationships))
         .route("/relationships", post(handlers::authz::write_relationship))
-        .route("/relationships", delete(handlers::authz::delete_relationship))
+        .route(
+            "/relationships",
+            delete(handlers::authz::delete_relationship),
+        )
         .route("/lookup/resources", post(handlers::authz::lookup_resources))
         .route("/lookup/subjects", post(handlers::authz::lookup_subjects))
         .with_state(state)
@@ -87,12 +90,24 @@ fn identity_routes(state: AppState) -> Router {
         .route("/providers", post(handlers::identity::create_provider))
         .route("/providers/{id}", get(handlers::identity::get_provider))
         .route("/providers/{id}", put(handlers::identity::update_provider))
-        .route("/providers/{id}", delete(handlers::identity::delete_provider))
+        .route(
+            "/providers/{id}",
+            delete(handlers::identity::delete_provider),
+        )
         // Sync operations
-        .route("/providers/{id}/sync", post(handlers::identity::trigger_sync))
-        .route("/providers/{id}/sync/history", get(handlers::identity::get_sync_history))
+        .route(
+            "/providers/{id}/sync",
+            post(handlers::identity::trigger_sync),
+        )
+        .route(
+            "/providers/{id}/sync/history",
+            get(handlers::identity::get_sync_history),
+        )
         // Health checks
-        .route("/providers/{id}/test", post(handlers::identity::test_connection))
+        .route(
+            "/providers/{id}/test",
+            post(handlers::identity::test_connection),
+        )
         .route("/health", get(handlers::identity::health_check))
         .with_state(state)
 }

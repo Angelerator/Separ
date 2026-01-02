@@ -42,7 +42,9 @@ pub struct PaginationParams {
     pub limit: u32,
 }
 
-fn default_limit() -> u32 { 20 }
+fn default_limit() -> u32 {
+    20
+}
 
 impl Default for PaginationParams {
     fn default() -> Self {

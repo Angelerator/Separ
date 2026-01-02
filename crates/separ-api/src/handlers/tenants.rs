@@ -8,9 +8,7 @@ use axum::{
 use serde::Deserialize;
 use tracing::{info, warn};
 
-use separ_core::{
-    PlatformId, Tenant, TenantId, TenantRepository, TenantSettings, TenantStatus,
-};
+use separ_core::{PlatformId, Tenant, TenantId, TenantRepository, TenantSettings, TenantStatus};
 
 use crate::dto::{
     ApiError, ApiResponse, CreateTenantRequest, PaginatedResponse, TenantResponse,
@@ -60,15 +58,19 @@ pub async fn create_tenant(
     match state.tenant_repo.create(&tenant).await {
         Ok(created) => {
             info!("Created tenant: {} ({})", created.name, created.id);
-            
+
             // Also create the tenant in SpiceDB for authorization
-            let _ = state.auth_service.client().write_relationship(
-                "tenant",
-                &created.id.to_string(),
-                "platform",
-                "platform",
-                "default",
-            ).await;
+            let _ = state
+                .auth_service
+                .client()
+                .write_relationship(
+                    "tenant",
+                    &created.id.to_string(),
+                    "platform",
+                    "platform",
+                    "default",
+                )
+                .await;
 
             Ok((
                 StatusCode::CREATED,
@@ -249,9 +251,9 @@ pub async fn update_tenant(
             "suspended" => TenantStatus::Suspended,
             "pending_setup" => TenantStatus::PendingSetup,
             "deactivated" => TenantStatus::Deactivated,
-            _ => existing.status.clone(),
+            _ => existing.status,
         })
-        .unwrap_or(existing.status.clone());
+        .unwrap_or(existing.status);
 
     let settings = request
         .settings

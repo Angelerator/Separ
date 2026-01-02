@@ -27,6 +27,9 @@
 //!                 └─────────────┘
 //! ```
 
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 pub mod auth;
 pub mod config;
 pub mod connection;
@@ -38,4 +41,3 @@ mod tests;
 
 pub use config::ProxyConfig;
 pub use proxy::SeparProxy;
-

@@ -4,11 +4,10 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use tracing::instrument;
 
-use separ_core::{
-    Result, Workspace, WorkspaceId, WorkspaceRepository, TenantId, SeparError,
-};
+use separ_core::{Result, SeparError, TenantId, Workspace, WorkspaceId, WorkspaceRepository};
 
 /// PostgreSQL implementation of WorkspaceRepository
+#[allow(dead_code)]
 pub struct PgWorkspaceRepository {
     pool: PgPool,
 }
@@ -23,7 +22,9 @@ impl PgWorkspaceRepository {
 impl WorkspaceRepository for PgWorkspaceRepository {
     #[instrument(skip(self, _workspace))]
     async fn create(&self, _workspace: &Workspace) -> Result<Workspace> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
@@ -32,13 +33,20 @@ impl WorkspaceRepository for PgWorkspaceRepository {
     }
 
     #[instrument(skip(self))]
-    async fn list_by_tenant(&self, _tenant_id: TenantId, _offset: u32, _limit: u32) -> Result<Vec<Workspace>> {
+    async fn list_by_tenant(
+        &self,
+        _tenant_id: TenantId,
+        _offset: u32,
+        _limit: u32,
+    ) -> Result<Vec<Workspace>> {
         Ok(vec![])
     }
 
     #[instrument(skip(self, _workspace))]
     async fn update(&self, _workspace: &Workspace) -> Result<Workspace> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]

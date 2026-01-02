@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use tracing::{debug, info, instrument};
 
 use separ_core::{
-    IdTokenClaims, OAuthHandler, OAuthProvider, OAuthProviderType, Result, TokenResponse,
-    UserInfo, SeparError,
+    IdTokenClaims, OAuthHandler, OAuthProvider, OAuthProviderType, Result, SeparError,
+    TokenResponse, UserInfo,
 };
 
 /// Default OAuth handler implementation
@@ -20,24 +20,27 @@ impl DefaultOAuthHandler {
     }
 
     fn get_auth_url(&self, provider: &OAuthProvider) -> Option<String> {
-        provider.authorization_endpoint.clone().or_else(|| {
-            match provider.provider_type {
-                OAuthProviderType::Microsoft => {
-                    Some("https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string())
-                }
+        provider
+            .authorization_endpoint
+            .clone()
+            .or_else(|| match provider.provider_type {
+                OAuthProviderType::Microsoft => Some(
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
+                ),
                 OAuthProviderType::Google => {
                     Some("https://accounts.google.com/o/oauth2/v2/auth".to_string())
                 }
                 OAuthProviderType::Okta => None,
                 OAuthProviderType::Auth0 => None,
                 OAuthProviderType::Custom | OAuthProviderType::Saml => None,
-            }
-        })
+            })
     }
 
     fn get_token_url(&self, provider: &OAuthProvider) -> Option<String> {
-        provider.token_endpoint.clone().or_else(|| {
-            match provider.provider_type {
+        provider
+            .token_endpoint
+            .clone()
+            .or_else(|| match provider.provider_type {
                 OAuthProviderType::Microsoft => {
                     Some("https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string())
                 }
@@ -47,13 +50,14 @@ impl DefaultOAuthHandler {
                 OAuthProviderType::Okta => None,
                 OAuthProviderType::Auth0 => None,
                 OAuthProviderType::Custom | OAuthProviderType::Saml => None,
-            }
-        })
+            })
     }
 
     fn get_userinfo_url(&self, provider: &OAuthProvider) -> Option<String> {
-        provider.userinfo_endpoint.clone().or_else(|| {
-            match provider.provider_type {
+        provider
+            .userinfo_endpoint
+            .clone()
+            .or_else(|| match provider.provider_type {
                 OAuthProviderType::Microsoft => {
                     Some("https://graph.microsoft.com/oidc/userinfo".to_string())
                 }
@@ -63,15 +67,14 @@ impl DefaultOAuthHandler {
                 OAuthProviderType::Okta => None,
                 OAuthProviderType::Auth0 => None,
                 OAuthProviderType::Custom | OAuthProviderType::Saml => None,
-            }
-        })
+            })
     }
 
     fn get_scopes(&self, provider: &OAuthProvider) -> Vec<String> {
         if !provider.scopes.is_empty() {
             return provider.scopes.clone();
         }
-        
+
         match provider.provider_type {
             OAuthProviderType::Microsoft => vec![
                 "openid".to_string(),
@@ -89,9 +92,7 @@ impl DefaultOAuthHandler {
                 "profile".to_string(),
                 "email".to_string(),
             ],
-            OAuthProviderType::Custom | OAuthProviderType::Saml => vec![
-                "openid".to_string(),
-            ],
+            OAuthProviderType::Custom | OAuthProviderType::Saml => vec!["openid".to_string()],
         }
     }
 }
@@ -105,7 +106,8 @@ impl OAuthHandler for DefaultOAuthHandler {
         state: &str,
         nonce: Option<&str>,
     ) -> Result<String> {
-        let auth_url = self.get_auth_url(provider)
+        let auth_url = self
+            .get_auth_url(provider)
             .ok_or_else(|| SeparError::OAuthError {
                 message: "Authorization endpoint not configured".to_string(),
             })?;
@@ -114,8 +116,7 @@ impl OAuthHandler for DefaultOAuthHandler {
 
         let redirect_uri = format!(
             "{}/api/v1/oauth/{}/callback",
-            self.redirect_base_url,
-            provider.id
+            self.redirect_base_url, provider.id
         );
 
         let mut url = format!(
@@ -136,20 +137,16 @@ impl OAuthHandler for DefaultOAuthHandler {
     }
 
     #[instrument(skip(self, provider, code))]
-    async fn exchange_code(
-        &self,
-        provider: &OAuthProvider,
-        code: &str,
-    ) -> Result<TokenResponse> {
-        let token_url = self.get_token_url(provider)
+    async fn exchange_code(&self, provider: &OAuthProvider, code: &str) -> Result<TokenResponse> {
+        let token_url = self
+            .get_token_url(provider)
             .ok_or_else(|| SeparError::OAuthError {
                 message: "Token endpoint not configured".to_string(),
             })?;
 
         let redirect_uri = format!(
             "{}/api/v1/oauth/{}/callback",
-            self.redirect_base_url,
-            provider.id
+            self.redirect_base_url, provider.id
         );
 
         // Decrypt client secret (in real implementation)
@@ -180,12 +177,13 @@ impl OAuthHandler for DefaultOAuthHandler {
             });
         }
 
-        let token_response: HashMap<String, serde_json::Value> = response.json().await
-            .map_err(|e| SeparError::OAuthError {
+        let token_response: HashMap<String, serde_json::Value> =
+            response.json().await.map_err(|e| SeparError::OAuthError {
                 message: format!("Failed to parse token response: {}", e),
             })?;
 
-        let access_token = token_response.get("access_token")
+        let access_token = token_response
+            .get("access_token")
             .and_then(|v| v.as_str())
             .ok_or_else(|| SeparError::OAuthError {
                 message: "Missing access_token in response".to_string(),
@@ -196,9 +194,18 @@ impl OAuthHandler for DefaultOAuthHandler {
             access_token,
             token_type: "Bearer".to_string(),
             expires_in: token_response.get("expires_in").and_then(|v| v.as_u64()),
-            refresh_token: token_response.get("refresh_token").and_then(|v| v.as_str()).map(String::from),
-            id_token: token_response.get("id_token").and_then(|v| v.as_str()).map(String::from),
-            scope: token_response.get("scope").and_then(|v| v.as_str()).map(String::from),
+            refresh_token: token_response
+                .get("refresh_token")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            id_token: token_response
+                .get("id_token")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            scope: token_response
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         };
 
         info!("Successfully exchanged authorization code for tokens");
@@ -227,12 +234,13 @@ impl OAuthHandler for DefaultOAuthHandler {
                 message: format!("Failed to decode token payload: {}", e),
             })?;
 
-        let claims: HashMap<String, serde_json::Value> = serde_json::from_slice(&payload)
-            .map_err(|e| SeparError::OAuthError {
+        let claims: HashMap<String, serde_json::Value> =
+            serde_json::from_slice(&payload).map_err(|e| SeparError::OAuthError {
                 message: format!("Failed to parse token claims: {}", e),
             })?;
 
-        let sub = claims.get("sub")
+        let sub = claims
+            .get("sub")
             .and_then(|v| v.as_str())
             .ok_or_else(|| SeparError::OAuthError {
                 message: "Missing 'sub' claim".to_string(),
@@ -241,15 +249,46 @@ impl OAuthHandler for DefaultOAuthHandler {
 
         Ok(IdTokenClaims {
             sub,
-            email: claims.get("email").and_then(|v| v.as_str()).map(String::from),
+            email: claims
+                .get("email")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             email_verified: claims.get("email_verified").and_then(|v| v.as_bool()),
-            name: claims.get("name").and_then(|v| v.as_str()).map(String::from),
-            given_name: claims.get("given_name").and_then(|v| v.as_str()).map(String::from),
-            family_name: claims.get("family_name").and_then(|v| v.as_str()).map(String::from),
-            picture: claims.get("picture").and_then(|v| v.as_str()).map(String::from),
-            locale: claims.get("locale").and_then(|v| v.as_str()).map(String::from),
-            extra: claims.into_iter()
-                .filter(|(k, _)| !["sub", "email", "email_verified", "name", "given_name", "family_name", "picture", "locale"].contains(&k.as_str()))
+            name: claims
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            given_name: claims
+                .get("given_name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            family_name: claims
+                .get("family_name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            picture: claims
+                .get("picture")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            locale: claims
+                .get("locale")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            extra: claims
+                .into_iter()
+                .filter(|(k, _)| {
+                    ![
+                        "sub",
+                        "email",
+                        "email_verified",
+                        "name",
+                        "given_name",
+                        "family_name",
+                        "picture",
+                        "locale",
+                    ]
+                    .contains(&k.as_str())
+                })
                 .collect(),
         })
     }
@@ -260,10 +299,11 @@ impl OAuthHandler for DefaultOAuthHandler {
         provider: &OAuthProvider,
         access_token: &str,
     ) -> Result<UserInfo> {
-        let userinfo_url = self.get_userinfo_url(provider)
-            .ok_or_else(|| SeparError::OAuthError {
-                message: "Userinfo endpoint not configured".to_string(),
-            })?;
+        let userinfo_url =
+            self.get_userinfo_url(provider)
+                .ok_or_else(|| SeparError::OAuthError {
+                    message: "Userinfo endpoint not configured".to_string(),
+                })?;
 
         let client = reqwest::Client::new();
         let response = client
@@ -281,12 +321,13 @@ impl OAuthHandler for DefaultOAuthHandler {
             });
         }
 
-        let user_info: HashMap<String, serde_json::Value> = response.json().await
-            .map_err(|e| SeparError::OAuthError {
+        let user_info: HashMap<String, serde_json::Value> =
+            response.json().await.map_err(|e| SeparError::OAuthError {
                 message: format!("Failed to parse user info: {}", e),
             })?;
 
-        let sub = user_info.get("sub")
+        let sub = user_info
+            .get("sub")
             .and_then(|v| v.as_str())
             .ok_or_else(|| SeparError::OAuthError {
                 message: "Missing 'sub' in userinfo response".to_string(),
@@ -295,13 +336,31 @@ impl OAuthHandler for DefaultOAuthHandler {
 
         Ok(UserInfo {
             sub,
-            email: user_info.get("email").and_then(|v| v.as_str()).map(String::from),
+            email: user_info
+                .get("email")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             email_verified: user_info.get("email_verified").and_then(|v| v.as_bool()),
-            name: user_info.get("name").and_then(|v| v.as_str()).map(String::from),
-            given_name: user_info.get("given_name").and_then(|v| v.as_str()).map(String::from),
-            family_name: user_info.get("family_name").and_then(|v| v.as_str()).map(String::from),
-            picture: user_info.get("picture").and_then(|v| v.as_str()).map(String::from),
-            locale: user_info.get("locale").and_then(|v| v.as_str()).map(String::from),
+            name: user_info
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            given_name: user_info
+                .get("given_name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            family_name: user_info
+                .get("family_name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            picture: user_info
+                .get("picture")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            locale: user_info
+                .get("locale")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     }
 }

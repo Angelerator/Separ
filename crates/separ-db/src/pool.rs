@@ -1,8 +1,8 @@
 //! Database connection pool management
 
+use separ_core::{Result, SeparError};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use tracing::info;
-use separ_core::{Result, SeparError};
 
 /// Database configuration
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ impl Default for DatabaseConfig {
 /// Create a new database connection pool
 pub async fn create_pool(config: &DatabaseConfig) -> Result<PgPool> {
     info!("Creating database connection pool");
-    
+
     let pool = PgPoolOptions::new()
         .max_connections(config.max_connections)
         .min_connections(config.min_connections)

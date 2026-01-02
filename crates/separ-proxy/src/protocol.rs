@@ -201,21 +201,24 @@ pub struct StartupMessage {
 impl StartupMessage {
     /// Get the user parameter
     pub fn user(&self) -> Option<&str> {
-        self.parameters.iter()
+        self.parameters
+            .iter()
             .find(|(k, _)| k == "user")
             .map(|(_, v)| v.as_str())
     }
 
     /// Get the database parameter
     pub fn database(&self) -> Option<&str> {
-        self.parameters.iter()
+        self.parameters
+            .iter()
             .find(|(k, _)| k == "database")
             .map(|(_, v)| v.as_str())
     }
 
     /// Get an arbitrary parameter
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.parameters.iter()
+        self.parameters
+            .iter()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.as_str())
     }
@@ -224,15 +227,18 @@ impl StartupMessage {
 /// Parse a startup message
 pub fn parse_startup_message(data: &[u8]) -> io::Result<StartupMessage> {
     if data.len() < 8 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Startup message too short"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Startup message too short",
+        ));
     }
 
-    let mut buf = &data[..];
+    let mut buf = data;
     let _length = buf.get_i32();
     let protocol_version = buf.get_i32();
 
     let mut parameters = Vec::new();
-    
+
     while buf.has_remaining() {
         let key = read_cstring(&mut buf)?;
         if key.is_empty() {
@@ -251,12 +257,15 @@ pub fn parse_startup_message(data: &[u8]) -> io::Result<StartupMessage> {
 /// Parse a password message
 pub fn parse_password_message(data: &[u8]) -> io::Result<String> {
     if data.len() < 5 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Password message too short"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Password message too short",
+        ));
     }
 
     let mut buf = &data[1..]; // Skip message type
     let _length = buf.get_i32();
-    
+
     read_cstring(&mut buf)
 }
 
@@ -264,7 +273,7 @@ pub fn parse_password_message(data: &[u8]) -> io::Result<String> {
 pub fn build_auth_request(request: &AuthRequest) -> BytesMut {
     let mut buf = BytesMut::new();
     buf.put_u8(b'R'); // Authentication message type
-    
+
     match request {
         AuthRequest::Ok => {
             buf.put_i32(8); // Length
@@ -301,19 +310,15 @@ pub fn build_auth_request(request: &AuthRequest) -> BytesMut {
             buf.put_i32(0);
         }
     }
-    
+
     buf
 }
 
 /// Build an error response message
-pub fn build_error_response(
-    severity: &str,
-    code: &str,
-    message: &str,
-) -> BytesMut {
+pub fn build_error_response(severity: &str, code: &str, message: &str) -> BytesMut {
     let mut buf = BytesMut::new();
     buf.put_u8(b'E'); // Error response
-    
+
     // Build fields
     let mut fields = BytesMut::new();
     fields.put_u8(b'S'); // Severity
@@ -326,10 +331,10 @@ pub fn build_error_response(
     fields.put_slice(message.as_bytes());
     fields.put_u8(0);
     fields.put_u8(0); // End of fields
-    
+
     buf.put_i32(4 + fields.len() as i32);
     buf.put(fields);
-    
+
     buf
 }
 
@@ -337,14 +342,14 @@ pub fn build_error_response(
 pub fn build_parameter_status(name: &str, value: &str) -> BytesMut {
     let mut buf = BytesMut::new();
     buf.put_u8(b'S');
-    
+
     let length = 4 + name.len() + 1 + value.len() + 1;
     buf.put_i32(length as i32);
     buf.put_slice(name.as_bytes());
     buf.put_u8(0);
     buf.put_slice(value.as_bytes());
     buf.put_u8(0);
-    
+
     buf
 }
 
@@ -370,7 +375,7 @@ pub fn build_backend_key_data(process_id: i32, secret_key: i32) -> BytesMut {
 /// Read a null-terminated string from a buffer
 fn read_cstring(buf: &mut &[u8]) -> io::Result<String> {
     let mut bytes = Vec::new();
-    
+
     while buf.has_remaining() {
         let b = buf.get_u8();
         if b == 0 {
@@ -378,8 +383,6 @@ fn read_cstring(buf: &mut &[u8]) -> io::Result<String> {
         }
         bytes.push(b);
     }
-    
-    String::from_utf8(bytes)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-}
 
+    String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}

@@ -5,10 +5,11 @@ use sqlx::PgPool;
 use tracing::instrument;
 
 use separ_core::{
-    Result, Application, ApplicationId, ApplicationRepository, WorkspaceId, SeparError,
+    Application, ApplicationId, ApplicationRepository, Result, SeparError, WorkspaceId,
 };
 
 /// PostgreSQL implementation of ApplicationRepository
+#[allow(dead_code)]
 pub struct PgApplicationRepository {
     pool: PgPool,
 }
@@ -23,7 +24,9 @@ impl PgApplicationRepository {
 impl ApplicationRepository for PgApplicationRepository {
     #[instrument(skip(self, _application))]
     async fn create(&self, _application: &Application) -> Result<Application> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
@@ -32,18 +35,29 @@ impl ApplicationRepository for PgApplicationRepository {
     }
 
     #[instrument(skip(self))]
-    async fn get_by_slug(&self, _workspace_id: WorkspaceId, _slug: &str) -> Result<Option<Application>> {
+    async fn get_by_slug(
+        &self,
+        _workspace_id: WorkspaceId,
+        _slug: &str,
+    ) -> Result<Option<Application>> {
         Ok(None)
     }
 
     #[instrument(skip(self))]
-    async fn list_by_workspace(&self, _workspace_id: WorkspaceId, _offset: u32, _limit: u32) -> Result<Vec<Application>> {
+    async fn list_by_workspace(
+        &self,
+        _workspace_id: WorkspaceId,
+        _offset: u32,
+        _limit: u32,
+    ) -> Result<Vec<Application>> {
         Ok(vec![])
     }
 
     #[instrument(skip(self, _application))]
     async fn update(&self, _application: &Application) -> Result<Application> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]

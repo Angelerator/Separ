@@ -4,11 +4,10 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use tracing::instrument;
 
-use separ_core::{
-    Result, SyncConfig, SyncConfigId, SyncConfigRepository, TenantId, SeparError,
-};
+use separ_core::{Result, SeparError, SyncConfig, SyncConfigId, SyncConfigRepository, TenantId};
 
 /// PostgreSQL implementation of SyncConfigRepository
+#[allow(dead_code)]
 pub struct PgSyncConfigRepository {
     pool: PgPool,
 }
@@ -23,7 +22,9 @@ impl PgSyncConfigRepository {
 impl SyncConfigRepository for PgSyncConfigRepository {
     #[instrument(skip(self, _config))]
     async fn create(&self, _config: &SyncConfig) -> Result<SyncConfig> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
@@ -38,7 +39,9 @@ impl SyncConfigRepository for PgSyncConfigRepository {
 
     #[instrument(skip(self, _config))]
     async fn update(&self, _config: &SyncConfig) -> Result<SyncConfig> {
-        Err(SeparError::Internal { message: "Not implemented".to_string() })
+        Err(SeparError::Internal {
+            message: "Not implemented".to_string(),
+        })
     }
 
     #[instrument(skip(self))]
