@@ -36,8 +36,8 @@ macro_rules! define_id {
             /// Parse from a SpiceDB object ID
             pub fn from_spicedb_id(s: &str) -> Option<Self> {
                 let prefix = concat!($prefix, "_");
-                if s.starts_with(prefix) {
-                    Uuid::parse_str(&s[prefix.len()..]).ok().map(Self)
+                if let Some(stripped) = s.strip_prefix(prefix) {
+                    Uuid::parse_str(stripped).ok().map(Self)
                 } else {
                     Uuid::parse_str(s).ok().map(Self)
                 }

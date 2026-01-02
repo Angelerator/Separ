@@ -29,7 +29,7 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -62,7 +62,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -79,7 +79,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -112,7 +112,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -143,37 +143,9 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.run_integration_tests == 'true' || startsWith(github.ref, 'refs/tags/v') }}
-    services:
-      spicedb:
-        image: authzed/spicedb:latest
-        ports:
-          - 50051:50051
-          - 8443:8443
-        env:
-          SPICEDB_GRPC_PRESHARED_KEY: "testsecretkey"
-          SPICEDB_DATASTORE_ENGINE: memory
-        options: >-
-          --health-cmd "grpc_health_probe -addr=:50051 || exit 0"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      postgres:
-        image: postgres:15
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: separ
-          POSTGRES_PASSWORD: separ
-          POSTGRES_DB: separ
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -183,8 +155,57 @@ jobs:
         with:
           version: "25.x"
 
-      - name: Wait for services
-        run: sleep 10
+      - name: Checking docker version
+        run: docker version
+
+      - name: Clean up resources from previous jobs
+        run: |
+          docker rm -f spicedb postgres || true
+          docker network rm test-network || true
+
+      - name: Create local container network
+        run: docker network create test-network
+
+      - name: Starting spicedb service container
+        run: |
+          docker run -d --name spicedb --network test-network \
+            -p 50051:50051 \
+            -e SPICEDB_GRPC_PRESHARED_KEY=testsecretkey \
+            authzed/spicedb:v1.33.0 serve --grpc-preshared-key=testsecretkey --datastore-engine=memory
+
+      - name: Starting postgres service container
+        run: |
+          docker run -d --name postgres --network test-network \
+            -p 5432:5432 \
+            -e POSTGRES_USER=separ \
+            -e POSTGRES_PASSWORD=separ \
+            -e POSTGRES_DB=separ \
+            postgres:16-alpine
+
+      - name: Waiting for all services to be ready
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for i in {1..30}; do
+            if docker exec postgres pg_isready -U separ; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          echo "Waiting for SpiceDB..."
+          for i in {1..30}; do
+            if curl -s http://localhost:50051 2>&1 | grep -q ""; then
+              echo "SpiceDB port is open!"
+              break
+            fi
+            echo "Waiting for SpiceDB... ($i/30)"
+            sleep 2
+          done
+          
+          sleep 5
+          echo "Services should be ready now"
 
       - name: Cache cargo registry
         uses: actions/cache@v5
@@ -204,6 +225,12 @@ jobs:
           DATABASE_URL: postgres://separ:separ@localhost:5432/separ
         run: cargo test --workspace -- --include-ignored
 
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f spicedb postgres || true
+          docker network rm test-network || true
+
   # =============================================================================
   # Build
   # =============================================================================
@@ -212,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check, fmt, clippy, test]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -237,7 +264,7 @@ jobs:
         run: cargo build --release --workspace
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: separ-binaries
           path: |
@@ -251,7 +278,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install cargo-audit
         run: cargo install cargo-audit
@@ -269,7 +296,7 @@ jobs:
     needs: [test]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
