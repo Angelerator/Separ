@@ -60,30 +60,17 @@ spec:
             - configMapRef:
                 name: {{ include "separ.fullname" . }}-config
           env:
-            # Database URL
-            {{- if .Values.externalDatabase }}
-            - name: SEPAR__DATABASE__HOST
-              value: {{ .Values.externalDatabase.host | quote }}
-            - name: SEPAR__DATABASE__PORT
-              value: {{ .Values.externalDatabase.port | default 5432 | quote }}
-            - name: SEPAR__DATABASE__DATABASE
-              value: {{ .Values.externalDatabase.database | quote }}
-            - name: SEPAR__DATABASE__USERNAME
-              value: {{ .Values.externalDatabase.username | quote }}
-            - name: SEPAR__DATABASE__SSL_MODE
-              value: {{ .Values.externalDatabase.sslMode | default "require" | quote }}
-            - name: SEPAR__DATABASE__PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.externalDatabase.existingSecret }}
-                  key: {{ .Values.externalDatabase.passwordKey }}
-            {{- else }}
+            # Database URL from secret
             - name: SEPAR__DATABASE__URL
               valueFrom:
                 secretKeyRef:
+                  {{- if .Values.externalDatabase }}
+                  name: {{ .Values.externalDatabase.existingSecret }}
+                  key: {{ .Values.externalDatabase.urlKey | default "database-url" }}
+                  {{- else }}
                   name: {{ include "separ.fullname" . }}-secrets
                   key: database-url
-            {{- end }}
+                  {{- end }}
             # SpiceDB Token
             - name: SEPAR__SPICEDB__TOKEN
               valueFrom:
@@ -97,7 +84,7 @@ spec:
                   {{- end }}
             # SpiceDB Endpoint
             - name: SEPAR__SPICEDB__ENDPOINT
-              value: "http://{{ include "separ.fullname" . }}-spicedb:{{ .Values.spicedb.service.grpcPort }}"
+              value: {{ include "separ.spicedbEndpoint" . | quote }}
             # JWT Secret
             - name: SEPAR__JWT__SECRET
               valueFrom:
