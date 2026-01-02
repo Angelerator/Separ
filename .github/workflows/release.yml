@@ -108,6 +108,11 @@ jobs:
           sed -i "s/^version:.*/version: ${{ steps.version.outputs.VERSION }}/" helm/separ/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.VERSION }}\"/" helm/separ/Chart.yaml
       
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+      
       - name: Login to GitHub Container Registry
         run: |
           echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
