@@ -122,6 +122,7 @@ impl WebhookProcessor {
 
 /// Hex encoding helper
 mod hex {
+    #[allow(unknown_lints, clippy::manual_is_multiple_of)]
     pub fn decode(s: &str) -> Result<Vec<u8>, &'static str> {
         if s.len() % 2 != 0 {
             return Err("Invalid hex string length");
