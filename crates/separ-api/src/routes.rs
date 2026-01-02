@@ -49,11 +49,6 @@ fn api_v1_routes(state: AppState) -> Router {
         // === PUBLIC ROUTES (for external validation) ===
         // Auth validation endpoints can be called by services like Tavana
         .nest("/auth", auth_routes(state.clone()))
-        // Permission check endpoint (read-only, service needs API key)
-        .route(
-            "/authz/check",
-            post(handlers::authz::check_permission).with_state(state.clone()),
-        )
         // Placeholder routes (to be implemented)
         .nest("/workspaces", placeholder_routes())
         .nest("/applications", placeholder_routes())
