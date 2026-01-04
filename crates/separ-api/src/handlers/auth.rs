@@ -447,27 +447,69 @@ async fn validate_password(
         }
     }
 
-    // No stored credentials - fallback to SpiceDB-based authorization check
-    // This allows admins who haven't set a password yet to still be recognized
+    // No stored credentials - check if user exists in database first
+    let user_exists: Option<(String, String)> =
+        sqlx::query_as("SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1")
+            .bind(username)
+            .fetch_optional(&state.db_pool)
+            .await
+            .unwrap_or(None);
 
-    // Check if user exists by looking up their relationships
-    let subjects = state
-        .auth_service
-        .client()
-        .lookup_subjects("platform", "main", "admin", "user")
+    if let Some((user_id, display_name)) = user_exists {
+        // User exists in DB but has no password - check if they have platform access
+        let has_platform_access = state
+            .auth_service
+            .client()
+            .check_permission("platform", "main", "admin", "user", &user_id)
+            .await
+            .unwrap_or(false);
+
+        if has_platform_access {
+            // Platform admin without password - warn but allow for initial setup
+            warn!(
+                username = %username,
+                user_id = %user_id,
+                "Platform admin authenticated without password - please set a password"
+            );
+
+            return Ok(Json(ValidateResponse {
+                user_id,
+                principal_type: "user".to_string(),
+                tenant_id,
+                tenant_name: None,
+                display_name: Some(display_name),
+                email: Some(username.clone()),
+                groups: vec!["admins".to_string()],
+                permissions: vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "query".to_string(),
+                    "admin".to_string(),
+                ],
+                expires_at: None,
+                attributes: None,
+            }));
+        }
+
+        // User exists but no password and no platform access - reject
+        warn!(username = %username, "User exists but has no password set");
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(AuthError {
+                error: "password_required".to_string(),
+                message: "Password not set for this user. Contact administrator.".to_string(),
+            }),
+        ));
+    }
+
+    // Check if there are ANY users in the system (first-time setup)
+    let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db_pool)
         .await
-        .unwrap_or_default();
+        .unwrap_or((0,));
 
-    // Also check tenant-level access
-    let tenant_users = state
-        .auth_service
-        .client()
-        .lookup_subjects("tenant", &tenant_id, "member", "user")
-        .await
-        .unwrap_or_default();
-
-    if subjects.is_empty() && tenant_users.is_empty() {
-        // No users exist yet - allow super admin setup
+    if user_count.0 == 0 {
+        // No users exist yet - allow super admin setup for first user
         warn!("No users in system - allowing initial access for setup");
         return Ok(Json(ValidateResponse {
             user_id: username.clone(),
@@ -488,49 +530,8 @@ async fn validate_password(
         }));
     }
 
-    // Check if this user (by email) is authorized
-    let has_platform_access = !subjects.is_empty();
-    let has_tenant_access = !tenant_users.is_empty();
-
-    if has_platform_access || has_tenant_access {
-        info!(
-            username = %username,
-            tenant_id = %tenant_id,
-            has_platform_access = %has_platform_access,
-            has_tenant_access = %has_tenant_access,
-            "User authenticated via SpiceDB authorization check"
-        );
-
-        let permissions = if has_platform_access {
-            vec![
-                "read".to_string(),
-                "write".to_string(),
-                "query".to_string(),
-                "admin".to_string(),
-            ]
-        } else {
-            vec!["read".to_string(), "query".to_string()]
-        };
-
-        return Ok(Json(ValidateResponse {
-            user_id: username.clone(),
-            principal_type: "user".to_string(),
-            tenant_id,
-            tenant_name: None,
-            display_name: Some(username.clone()),
-            email: Some(username.clone()),
-            groups: if has_platform_access {
-                vec!["admins".to_string()]
-            } else {
-                vec![]
-            },
-            permissions,
-            expires_at: None,
-            attributes: None,
-        }));
-    }
-
-    warn!(username = %username, "User not found or not authorized");
+    // User not found
+    warn!(username = %username, "User not found");
     Err((
         StatusCode::UNAUTHORIZED,
         Json(AuthError {
