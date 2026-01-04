@@ -68,6 +68,7 @@ base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
 rand = "0.8"
+argon2 = "0.5"
 secrecy = { version = "0.10", features = ["serde"] }
 
 # URL encoding
