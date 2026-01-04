@@ -373,7 +373,7 @@ async fn validate_password(
         SELECT uc.user_id, uc.password_hash
         FROM user_credentials uc
         WHERE uc.user_id IN (
-            SELECT user_id FROM users WHERE email = $1
+            SELECT id::text FROM users WHERE email = $1
             UNION
             SELECT $1  -- Also try direct user_id lookup
         )
