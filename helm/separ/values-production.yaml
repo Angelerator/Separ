@@ -1,39 +1,57 @@
-# Separ Authorization Platform - Production Values Example
+# Separ Production Values
 # ============================================================================
-# Copy this file and customize for your environment.
-# DO NOT commit actual secrets or customer-specific values to the repository.
+# These values are optimized for production deployments
 # ============================================================================
 
 # =============================================================================
-# Global Configuration
-# =============================================================================
-global:
-  # Set to your private container registry
-  imageRegistry: ""  # e.g., "myregistry.azurecr.io"
-  imagePullSecrets:
-    - name: registry-credentials
-
-# =============================================================================
-# Separ API Server
+# Separ API Server - Production Configuration
 # =============================================================================
 separ:
   replicaCount: 3
   
   image:
-    repository: separ
-    tag: ""  # Set to deployed version, e.g., "v1.0.0"
-    pullPolicy: IfNotPresent
-  
-  service:
-    type: ClusterIP
-    port: 8080
-  
-  ingress:
-    enabled: false
+    pullPolicy: Always  # Always pull to get latest security patches
   
   resources:
     requests:
-      cpu: 200m
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  
+  # Anti-affinity to spread pods across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: separ
+            topologyKey: kubernetes.io/hostname
+
+# =============================================================================
+# SpiceDB - Production Configuration
+# =============================================================================
+spicedb:
+  replicaCount: 3
+  
+  resources:
+    requests:
+      cpu: 250m
       memory: 256Mi
     limits:
       cpu: 1000m
@@ -45,115 +63,42 @@ separ:
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70
   
-  config:
-    server:
-      host: "0.0.0.0"
-      port: 8080
-    jwt:
-      issuer: "separ"
-      accessTokenExpirySecs: 3600
-      refreshTokenExpirySecs: 2592000
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
   
-  # Reference Kubernetes secrets - DO NOT put actual secrets here
-  secrets:
-    existingJwtSecret: "separ-secrets"
-    jwtSecretKey: "jwt-secret"
+  # Anti-affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: spicedb
+            topologyKey: kubernetes.io/hostname
 
 # =============================================================================
-# SpiceDB (Authorization Engine)
+# Security Configuration
 # =============================================================================
-spicedb:
+networkPolicies:
   enabled: true
-  replicaCount: 3
-  
-  image:
-    repository: spicedb  # Or "authzed/spicedb" for public registry
-    tag: "v1.33.0"
-    pullPolicy: IfNotPresent
-  
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: 2000m
-      memory: 2Gi
-  
-  secrets:
-    existingPresharedKeySecret: "separ-secrets"
-    presharedKeySecretKey: "spicedb-preshared-key"
 
-# =============================================================================
-# PostgreSQL - Use Managed Database Service
-# =============================================================================
-postgresql:
-  # Disable bundled PostgreSQL - use managed database
+# Service mesh integration (if available)
+serviceMesh:
   enabled: false
 
-# External PostgreSQL connection (for Separ metadata)
-# Set actual values during deployment, NOT in this file
-externalDatabase:
-  host: ""  # Set during deployment
-  port: 5432
-  database: "separ"
-  username: ""  # Set during deployment
-  existingSecret: "separ-secrets"
-  passwordKey: "postgres-password"
-  sslMode: "require"
-
-# External PostgreSQL for SpiceDB (can be same server, different database)
-externalSpicedbDatabase:
-  host: ""  # Set during deployment
-  port: 5432
-  database: "spicedb"
-  username: ""  # Set during deployment
-  existingSecret: "separ-secrets"
-  passwordKey: "postgres-password"
-  sslMode: "require"
-
 # =============================================================================
-# Network Policies (Security) - ENABLED
+# Observability
 # =============================================================================
-networkPolicy:
-  enabled: true
-  
-  # Only allow access from approved namespaces
-  allowedNamespaces: []
-  # - name: my-app-namespace
-
-# =============================================================================
-# Service Account
-# =============================================================================
-serviceAccount:
-  create: true
-  annotations: {}
-  # For cloud-specific identity federation, add annotations during deployment
-  name: "separ"
-
-# =============================================================================
-# Pod Security - Strict
-# =============================================================================
-podSecurityContext:
-  fsGroup: 1000
-  runAsNonRoot: true
-
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-  seccompProfile:
-    type: RuntimeDefault
-
-# =============================================================================
-# Monitoring
-# =============================================================================
-metrics:
+monitoring:
   enabled: true
   serviceMonitor:
-    enabled: false
-    namespace: ""
+    enabled: true
     interval: 30s
+  
+  # Enable tracing if Jaeger/Zipkin is available
+  tracing:
+    enabled: false
+    endpoint: ""

@@ -13,14 +13,12 @@ spec:
   minReplicas: {{ .Values.separ.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.separ.autoscaling.maxReplicas }}
   metrics:
-    {{- if .Values.separ.autoscaling.targetCPUUtilizationPercentage }}
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
           averageUtilization: {{ .Values.separ.autoscaling.targetCPUUtilizationPercentage }}
-    {{- end }}
     {{- if .Values.separ.autoscaling.targetMemoryUtilizationPercentage }}
     - type: Resource
       resource:
@@ -30,4 +28,26 @@ spec:
           averageUtilization: {{ .Values.separ.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
 {{- end }}
-
+---
+{{- if .Values.spicedb.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: spicedb
+  labels:
+    app: spicedb
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: spicedb
+  minReplicas: {{ .Values.spicedb.autoscaling.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.spicedb.autoscaling.maxReplicas | default 10 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.spicedb.autoscaling.targetCPUUtilizationPercentage | default 70 }}
+{{- end }}

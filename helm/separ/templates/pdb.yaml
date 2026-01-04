@@ -1,4 +1,4 @@
-{{- if gt (int .Values.separ.replicaCount) 1 }}
+{{- if .Values.separ.podDisruptionBudget.enabled }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -6,25 +6,22 @@ metadata:
   labels:
     {{- include "separ.labels" . | nindent 4 }}
 spec:
-  maxUnavailable: 1
+  minAvailable: {{ .Values.separ.podDisruptionBudget.minAvailable | default 1 }}
   selector:
     matchLabels:
       {{- include "separ.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: api
----
 {{- end }}
-{{- if and .Values.spicedb.enabled (gt (int .Values.spicedb.replicaCount) 1) }}
+---
+{{- if .Values.spicedb.podDisruptionBudget.enabled }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "separ.fullname" . }}-spicedb
+  name: spicedb
   labels:
-    {{- include "separ.labels" . | nindent 4 }}
+    app: spicedb
 spec:
-  maxUnavailable: 1
+  minAvailable: {{ .Values.spicedb.podDisruptionBudget.minAvailable | default 1 }}
   selector:
     matchLabels:
-      {{- include "separ.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: spicedb
+      app: spicedb
 {{- end }}
-
