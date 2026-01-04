@@ -83,6 +83,11 @@ fn admin_user_routes(state: AppState) -> Router {
         .route("/{id}/roles", get(handlers::users::get_roles))
         .route("/{id}/roles", post(handlers::users::assign_role))
         .route("/{id}/roles", delete(handlers::users::remove_role))
+        .route("/{id}/password", post(handlers::users::set_password))
+        .route(
+            "/{id}/password/generate",
+            post(handlers::users::generate_password),
+        )
         .layer(middleware::from_fn(require_admin_api_key))
         .with_state(state)
 }

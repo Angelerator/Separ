@@ -364,10 +364,92 @@ async fn validate_password(
         "default".to_string()
     };
 
-    // Look up the user in SpiceDB by checking if they have any relationship
-    // This verifies the user was created via the API
     let username = &request.username;
-    
+    let password = &request.credential;
+
+    // First, try to find user by email and verify password
+    let stored_creds: Option<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT uc.user_id, uc.password_hash
+        FROM user_credentials uc
+        WHERE uc.user_id IN (
+            SELECT user_id FROM users WHERE email = $1
+            UNION
+            SELECT $1  -- Also try direct user_id lookup
+        )
+        AND (uc.locked_until IS NULL OR uc.locked_until < NOW())
+        AND (uc.expires_at IS NULL OR uc.expires_at > NOW())
+        LIMIT 1
+        "#,
+    )
+    .bind(username)
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((user_id, password_hash)) = stored_creds {
+        // Verify password using Argon2
+        if crate::password::verify_password(password, &password_hash) {
+            info!(username = %username, user_id = %user_id, "Password verified successfully");
+
+            // Get user's roles from SpiceDB
+            let has_platform_access = state
+                .auth_service
+                .client()
+                .check_permission("platform", "main", "admin", "user", &user_id)
+                .await
+                .unwrap_or(false);
+
+            let permissions = if has_platform_access {
+                vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "query".to_string(),
+                    "admin".to_string(),
+                ]
+            } else {
+                vec!["read".to_string(), "query".to_string()]
+            };
+
+            return Ok(Json(ValidateResponse {
+                user_id,
+                principal_type: "user".to_string(),
+                tenant_id,
+                tenant_name: None,
+                display_name: Some(username.clone()),
+                email: Some(username.clone()),
+                groups: if has_platform_access {
+                    vec!["admins".to_string()]
+                } else {
+                    vec![]
+                },
+                permissions,
+                expires_at: None,
+                attributes: None,
+            }));
+        } else {
+            // Password mismatch - increment failed attempts
+            let _ = sqlx::query(
+                "UPDATE user_credentials SET failed_attempts = failed_attempts + 1 WHERE user_id = $1",
+            )
+            .bind(&user_id)
+            .execute(&state.db_pool)
+            .await;
+
+            warn!(username = %username, "Invalid password");
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(AuthError {
+                    error: "invalid_credentials".to_string(),
+                    message: "Invalid username or password".to_string(),
+                }),
+            ));
+        }
+    }
+
+    // No stored credentials - fallback to SpiceDB-based authorization check
+    // This allows admins who haven't set a password yet to still be recognized
+
     // Check if user exists by looking up their relationships
     let subjects = state
         .auth_service
@@ -384,16 +466,6 @@ async fn validate_password(
         .await
         .unwrap_or_default();
 
-    // Combine platform admins and tenant users
-    let all_users: Vec<_> = subjects.iter().chain(tenant_users.iter()).collect();
-
-    // Find user by email (external_id)
-    // In a real implementation, we'd look up by email in the database
-    // For now, check if any user relationship exists with matching pattern
-    
-    // For MVP: If user is a platform admin, allow access with any password
-    // TODO: Implement proper password hashing and storage
-    
     if subjects.is_empty() && tenant_users.is_empty() {
         // No users exist yet - allow super admin setup
         warn!("No users in system - allowing initial access for setup");
@@ -405,16 +477,18 @@ async fn validate_password(
             display_name: Some(username.clone()),
             email: Some(username.clone()),
             groups: vec!["admins".to_string()],
-            permissions: vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()],
+            permissions: vec![
+                "read".to_string(),
+                "write".to_string(),
+                "query".to_string(),
+                "admin".to_string(),
+            ],
             expires_at: None,
             attributes: None,
         }));
     }
 
     // Check if this user (by email) is authorized
-    // In production, we'd verify the password hash here
-    // For now, check if user has platform_admin or tenant access
-    
     let has_platform_access = !subjects.is_empty();
     let has_tenant_access = !tenant_users.is_empty();
 
@@ -428,7 +502,12 @@ async fn validate_password(
         );
 
         let permissions = if has_platform_access {
-            vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()]
+            vec![
+                "read".to_string(),
+                "write".to_string(),
+                "query".to_string(),
+                "admin".to_string(),
+            ]
         } else {
             vec!["read".to_string(), "query".to_string()]
         };
@@ -440,7 +519,11 @@ async fn validate_password(
             tenant_name: None,
             display_name: Some(username.clone()),
             email: Some(username.clone()),
-            groups: if has_platform_access { vec!["admins".to_string()] } else { vec![] },
+            groups: if has_platform_access {
+                vec!["admins".to_string()]
+            } else {
+                vec![]
+            },
             permissions,
             expires_at: None,
             attributes: None,

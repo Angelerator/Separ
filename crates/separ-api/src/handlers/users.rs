@@ -23,8 +23,23 @@ pub struct CreateUserRequest {
     pub email: String,
     pub display_name: Option<String>,
     pub tenant_id: Uuid,
+    /// Initial password (optional - will be generated if not provided)
+    pub password: Option<String>,
     /// Roles to assign: "platform_admin", "tenant_owner", "tenant_admin", "tenant_member"
     pub roles: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetPasswordRequest {
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SetPasswordResponse {
+    pub success: bool,
+    pub message: String,
+    /// Only returned if password was auto-generated
+    pub generated_password: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -465,6 +480,163 @@ pub async fn get_roles(
         data: Some(roles),
         error: None,
     }))
+}
+
+/// Set or reset a user's password
+pub async fn set_password(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<SetPasswordRequest>,
+) -> Result<Json<ApiResponse<SetPasswordResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+    info!("Setting password for user: {}", id);
+
+    // Validate password strength
+    if request.password.len() < 12 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(ApiError {
+                    code: "WEAK_PASSWORD".to_string(),
+                    message: "Password must be at least 12 characters".to_string(),
+                    details: None,
+                }),
+            }),
+        ));
+    }
+
+    // Hash the password
+    let password_hash = crate::password::hash_password(&request.password).map_err(|e| {
+        warn!("Failed to hash password: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(ApiError {
+                    code: "PASSWORD_HASH_FAILED".to_string(),
+                    message: "Failed to hash password".to_string(),
+                    details: None,
+                }),
+            }),
+        )
+    })?;
+
+    // Store the password hash in the database
+    // For now, store it as a relationship attribute (in production, use a proper user table)
+    let result = sqlx::query(
+        r#"
+        INSERT INTO user_credentials (user_id, password_hash, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET password_hash = $2, updated_at = NOW()
+        "#,
+    )
+    .bind(&id)
+    .bind(&password_hash)
+    .execute(&state.db_pool)
+    .await;
+
+    match result {
+        Ok(_) => {
+            info!("Password set successfully for user: {}", id);
+            Ok(Json(ApiResponse {
+                success: true,
+                data: Some(SetPasswordResponse {
+                    success: true,
+                    message: "Password set successfully".to_string(),
+                    generated_password: None,
+                }),
+                error: None,
+            }))
+        }
+        Err(e) => {
+            warn!("Failed to store password: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "PASSWORD_STORE_FAILED".to_string(),
+                        message: format!("Failed to store password: {}", e),
+                        details: None,
+                    }),
+                }),
+            ))
+        }
+    }
+}
+
+/// Generate a new password for a user
+pub async fn generate_password(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<SetPasswordResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+    info!("Generating password for user: {}", id);
+
+    // Generate a secure random password
+    let new_password = crate::password::generate_password(24);
+
+    // Hash and store it
+    let password_hash = crate::password::hash_password(&new_password).map_err(|e| {
+        warn!("Failed to hash password: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(ApiError {
+                    code: "PASSWORD_HASH_FAILED".to_string(),
+                    message: "Failed to hash password".to_string(),
+                    details: None,
+                }),
+            }),
+        )
+    })?;
+
+    // Store the password hash
+    let result = sqlx::query(
+        r#"
+        INSERT INTO user_credentials (user_id, password_hash, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET password_hash = $2, updated_at = NOW()
+        "#,
+    )
+    .bind(&id)
+    .bind(&password_hash)
+    .execute(&state.db_pool)
+    .await;
+
+    match result {
+        Ok(_) => {
+            info!("Password generated successfully for user: {}", id);
+            Ok(Json(ApiResponse {
+                success: true,
+                data: Some(SetPasswordResponse {
+                    success: true,
+                    message: "Password generated successfully. Store it securely - it won't be shown again.".to_string(),
+                    generated_password: Some(new_password),
+                }),
+                error: None,
+            }))
+        }
+        Err(e) => {
+            warn!("Failed to store password: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "PASSWORD_STORE_FAILED".to_string(),
+                        message: format!("Failed to store password: {}", e),
+                        details: None,
+                    }),
+                }),
+            ))
+        }
+    }
 }
 
 // =============================================================================
