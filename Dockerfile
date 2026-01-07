@@ -39,10 +39,11 @@ COPY config/default.toml /app/config/default.toml
 # Copy migrations
 COPY crates/separ-db/migrations /app/migrations
 
-# Create non-root user
-RUN useradd -r -s /bin/false separ && \
+# Create non-root user with UID 1000 to match Kubernetes securityContext
+RUN groupadd -g 1000 separ && \
+    useradd -u 1000 -g 1000 -s /bin/false separ && \
     chown -R separ:separ /app
-USER separ
+USER 1000
 
 # Expose port
 EXPOSE 8080
