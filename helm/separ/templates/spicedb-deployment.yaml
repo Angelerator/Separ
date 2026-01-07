@@ -30,6 +30,8 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         - name: migrate
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           {{- if .Values.global.imageRegistry }}
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.spicedb.image.repository }}:{{ .Values.spicedb.image.tag }}"
           {{- else }}
@@ -107,6 +109,16 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.spicedb.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: spicedb-data
+              mountPath: /.spicedb
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: spicedb-data
+          emptyDir: {}
       {{- with .Values.separ.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
