@@ -946,6 +946,34 @@ async fn validate_password_internal(
         ));
     }
 
+    // Check if there are ANY users in the system (first-time setup)
+    let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db_pool)
+        .await
+        .unwrap_or((0,));
+
+    if user_count.0 == 0 {
+        // No users exist yet - allow super admin setup for first user
+        warn!("No users in system - allowing initial token for setup");
+        return Ok(ValidateResponse {
+            user_id: username.clone(),
+            principal_type: "user".to_string(),
+            tenant_id,
+            tenant_name: None,
+            display_name: Some(username.clone()),
+            email: Some(username.clone()),
+            groups: vec!["admins".to_string()],
+            permissions: vec![
+                "read".to_string(),
+                "write".to_string(),
+                "query".to_string(),
+                "admin".to_string(),
+            ],
+            expires_at: None,
+            attributes: None,
+        });
+    }
+
     warn!(username = %username, "User not found for token request");
     Err((
         StatusCode::UNAUTHORIZED,
