@@ -4,15 +4,15 @@ services:
     image: postgres:16-alpine
     container_name: separ-postgres
     environment:
-      POSTGRES_USER: separ
-      POSTGRES_PASSWORD: separ
-      POSTGRES_DB: separ
+      POSTGRES_USER: ${POSTGRES_USER:-separ}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-separ}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U separ"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-separ}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -21,7 +21,7 @@ services:
   spicedb:
     image: authzed/spicedb:latest
     container_name: separ-spicedb
-    command: serve --grpc-preshared-key "supersecretkey"
+    command: serve --grpc-preshared-key "${SPICEDB_PRESHARED_KEY}"
     ports:
       - "50051:50051"  # gRPC
       - "8443:8443"    # HTTP/REST
@@ -30,7 +30,7 @@ services:
         condition: service_healthy
     environment:
       SPICEDB_DATASTORE_ENGINE: postgres
-      SPICEDB_DATASTORE_CONN_URI: "postgres://separ:separ@postgres:5432/separ?sslmode=disable"
+      SPICEDB_DATASTORE_CONN_URI: "postgres://${POSTGRES_USER:-separ}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-separ}?sslmode=disable"
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
       interval: 10s
@@ -42,7 +42,7 @@ services:
   spicedb-migrate:
     image: authzed/spicedb:latest
     container_name: separ-spicedb-migrate
-    command: migrate head --datastore-engine postgres --datastore-conn-uri "postgres://separ:separ@postgres:5432/separ?sslmode=disable"
+    command: migrate head --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER:-separ}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-separ}?sslmode=disable"
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,12 +58,12 @@ services:
     environment:
       SEPAR__SERVER__HOST: "0.0.0.0"
       SEPAR__SERVER__PORT: "8080"
-      SEPAR__DATABASE__URL: "postgres://separ:separ@postgres:5432/separ"
+      SEPAR__DATABASE__URL: "postgres://${POSTGRES_USER:-separ}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-separ}"
       SEPAR__SPICEDB__ENDPOINT: "http://spicedb:50051"
-      SEPAR__SPICEDB__TOKEN: "supersecretkey"
-      SEPAR__JWT__SECRET: "local-dev-only-not-for-production-generate-strong-secret"
-      SEPAR__JWT__ISSUER: "separ"
-      RUST_LOG: "info,separ=debug"
+      SEPAR__SPICEDB__TOKEN: "${SPICEDB_PRESHARED_KEY}"
+      SEPAR__JWT__SECRET: "${JWT_SECRET}"
+      SEPAR__JWT__ISSUER: "${JWT_ISSUER:-separ}"
+      RUST_LOG: "${RUST_LOG:-info,separ=debug}"
     depends_on:
       postgres:
         condition: service_healthy
