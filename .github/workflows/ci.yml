@@ -2,9 +2,17 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
     tags:
       - 'v*'
       - 'ci-*'
+  pull_request:
+    branches:
+      - main
+      - develop
   workflow_dispatch:
     inputs:
       run_integration_tests:
