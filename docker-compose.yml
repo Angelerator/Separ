@@ -49,5 +49,34 @@ services:
       postgres:
         condition: service_healthy
 
+  # Separ API Server
+  separ:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: separ-api
+    ports:
+      - "8080:8080"
+    environment:
+      SEPAR__SERVER__HOST: "0.0.0.0"
+      SEPAR__SERVER__PORT: "8080"
+      SEPAR__DATABASE__URL: "postgres://separ:separ@postgres:5432/separ"
+      SEPAR__SPICEDB__ENDPOINT: "http://spicedb:50051"
+      SEPAR__SPICEDB__TOKEN: "supersecretkey"
+      SEPAR__JWT__SECRET: "local-dev-only-not-for-production-generate-strong-secret"
+      SEPAR__JWT__ISSUER: "separ"
+      RUST_LOG: "info,separ=debug"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spicedb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   postgres_data:
