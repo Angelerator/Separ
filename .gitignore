@@ -7,14 +7,21 @@
 *.swp
 *.swo
 
-# Environment
+# Environment - KEEP .env.example!
 .env
 .env.local
-*.env
+.env.production
+.env.development
+!.env.example
 
 # Config overrides
 config/local.toml
 config/production.toml
+
+# Secrets
+.secrets/
+*.pem
+*.key
 
 # Logs
 *.log
@@ -41,7 +48,6 @@ coverage/
 # Docker
 .docker/
 
-# Helm
-helm/*/charts/
+# Helm secrets
+helm/*/secrets.yaml
 *.tgz
-
