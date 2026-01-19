@@ -130,4 +130,15 @@ definition sync_config {
     permission view = admin + tenant->view
     permission trigger = admin + tenant->manage
 }
+
+definition yekta_resource {
+    relation tenant: tenant
+    relation owner: user | service_account
+    relation editor: user | service_account | group#member
+    relation viewer: user | service_account | group#member
+    
+    permission manage = owner + tenant->manage
+    permission write = owner + editor + tenant->manage
+    permission read = owner + editor + viewer + tenant->view
+}
 "#;

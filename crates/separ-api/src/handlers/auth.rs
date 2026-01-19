@@ -448,12 +448,13 @@ async fn validate_password(
     }
 
     // No stored credentials - check if user exists in database first
-    let user_exists: Option<(String, String)> =
-        sqlx::query_as("SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1")
-            .bind(username)
-            .fetch_optional(&state.db_pool)
-            .await
-            .unwrap_or(None);
+    let user_exists: Option<(String, String)> = sqlx::query_as(
+        "SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1",
+    )
+    .bind(username)
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None);
 
     if let Some((user_id, display_name)) = user_exists {
         // User exists in DB but has no password - check if they have platform access
@@ -671,6 +672,278 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
     URL_SAFE_NO_PAD.decode(input)
 }
 
+// =============================================================================
+// Token Issuance (OAuth2 Password Grant)
+// =============================================================================
+
+/// Request for token issuance (OAuth2 password grant)
+#[derive(Debug, Deserialize)]
+pub struct TokenRequest {
+    /// Grant type - currently only "password" is supported
+    pub grant_type: String,
+    /// Username (email) for authentication
+    pub username: String,
+    /// Password for authentication
+    pub password: String,
+    /// Optional tenant hint
+    #[serde(default)]
+    pub tenant_hint: Option<String>,
+}
+
+/// Response from token issuance
+#[derive(Debug, Serialize)]
+pub struct TokenResponse {
+    /// JWT access token
+    pub access_token: String,
+    /// Refresh token for obtaining new access tokens
+    pub refresh_token: String,
+    /// Token type (always "Bearer")
+    pub token_type: String,
+    /// Access token expiry in seconds
+    pub expires_in: i64,
+    /// User ID
+    pub user_id: String,
+    /// Tenant ID
+    pub tenant_id: String,
+}
+
+/// Issue JWT tokens after password validation
+///
+/// POST /api/v1/auth/token
+///
+/// This endpoint implements OAuth2 password grant for issuing JWT tokens.
+/// Hormoz (desktop app) uses this to authenticate users and get tokens for Yekta.
+pub async fn issue_token(
+    State(state): State<AppState>,
+    Json(request): Json<TokenRequest>,
+) -> Result<Json<TokenResponse>, (StatusCode, Json<AuthError>)> {
+    // Only support password grant for now
+    if request.grant_type != "password" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AuthError {
+                error: "unsupported_grant_type".to_string(),
+                message: "Only 'password' grant type is supported".to_string(),
+            }),
+        ));
+    }
+
+    debug!(
+        username = %request.username,
+        "Processing token request"
+    );
+
+    // Validate credentials using existing password validation logic
+    let validate_req = ValidateRequest {
+        username: request.username.clone(),
+        credential: request.password.clone(),
+        credential_type: "password".to_string(),
+        tenant_hint: request.tenant_hint.clone(),
+        application: None,
+        client_ip: None,
+    };
+
+    // Call the internal validation function
+    let validated = validate_password_internal(&state, &validate_req).await?;
+
+    // Issue JWT tokens using the JwtService
+    let tokens = state
+        .jwt_service
+        .generate_tokens(
+            &validated.user_id,
+            &validated.tenant_id,
+            validated.email.as_deref(),
+            validated.display_name.as_deref(),
+            validated.groups.clone(),
+            validated.permissions.clone(),
+        )
+        .map_err(|e| {
+            warn!(error = %e, "Failed to generate tokens");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AuthError {
+                    error: "token_generation_failed".to_string(),
+                    message: "Failed to generate authentication tokens".to_string(),
+                }),
+            )
+        })?;
+
+    info!(
+        user_id = %validated.user_id,
+        tenant_id = %validated.tenant_id,
+        "Token issued successfully"
+    );
+
+    Ok(Json(TokenResponse {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: tokens.token_type,
+        expires_in: tokens.expires_in,
+        user_id: validated.user_id,
+        tenant_id: validated.tenant_id,
+    }))
+}
+
+/// JWKS endpoint for external services to verify tokens
+///
+/// GET /.well-known/jwks.json
+///
+/// Returns the JSON Web Key Set for token signature verification.
+/// Yekta uses this to verify JWT signatures without calling Separ on every request.
+pub async fn jwks(State(state): State<AppState>) -> Json<separ_oauth::jwt::JwksResponse> {
+    Json(state.jwt_service.get_jwks())
+}
+
+/// Internal password validation that returns ValidateResponse directly
+/// (not wrapped in Json for internal use)
+async fn validate_password_internal(
+    state: &AppState,
+    request: &ValidateRequest,
+) -> Result<ValidateResponse, (StatusCode, Json<AuthError>)> {
+    // Extract tenant from email domain or hint
+    let tenant_id = if let Some(hint) = &request.tenant_hint {
+        hint.clone()
+    } else if request.username.contains('@') {
+        request
+            .username
+            .split('@')
+            .nth(1)
+            .and_then(|domain| domain.split('.').next())
+            .map(String::from)
+            .unwrap_or_else(|| "default".to_string())
+    } else {
+        "default".to_string()
+    };
+
+    let username = &request.username;
+    let password = &request.credential;
+
+    // First, try to find user by email and verify password
+    let stored_creds: Option<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT uc.user_id, uc.password_hash
+        FROM user_credentials uc
+        WHERE uc.user_id IN (
+            SELECT id::text FROM users WHERE email = $1
+            UNION
+            SELECT $1
+        )
+        AND (uc.locked_until IS NULL OR uc.locked_until < NOW())
+        AND (uc.expires_at IS NULL OR uc.expires_at > NOW())
+        LIMIT 1
+        "#,
+    )
+    .bind(username)
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((user_id, password_hash)) = stored_creds {
+        if crate::password::verify_password(password, &password_hash) {
+            info!(username = %username, user_id = %user_id, "Password verified for token issuance");
+
+            let has_platform_access = state
+                .auth_service
+                .client()
+                .check_permission("platform", "main", "admin", "user", &user_id)
+                .await
+                .unwrap_or(false);
+
+            let permissions = if has_platform_access {
+                vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()]
+            } else {
+                vec!["read".to_string(), "query".to_string()]
+            };
+
+            return Ok(ValidateResponse {
+                user_id,
+                principal_type: "user".to_string(),
+                tenant_id,
+                tenant_name: None,
+                display_name: Some(username.clone()),
+                email: Some(username.clone()),
+                groups: if has_platform_access { vec!["admins".to_string()] } else { vec![] },
+                permissions,
+                expires_at: None,
+                attributes: None,
+            });
+        } else {
+            let _ = sqlx::query(
+                "UPDATE user_credentials SET failed_attempts = failed_attempts + 1 WHERE user_id = $1",
+            )
+            .bind(&user_id)
+            .execute(&state.db_pool)
+            .await;
+
+            warn!(username = %username, "Invalid password for token request");
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(AuthError {
+                    error: "invalid_credentials".to_string(),
+                    message: "Invalid username or password".to_string(),
+                }),
+            ));
+        }
+    }
+
+    // Check if user exists but has no password
+    let user_exists: Option<(String, String)> = sqlx::query_as(
+        "SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1",
+    )
+    .bind(username)
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((user_id, display_name)) = user_exists {
+        let has_platform_access = state
+            .auth_service
+            .client()
+            .check_permission("platform", "main", "admin", "user", &user_id)
+            .await
+            .unwrap_or(false);
+
+        if has_platform_access {
+            warn!(
+                username = %username,
+                user_id = %user_id,
+                "Platform admin token issued without password - please set a password"
+            );
+
+            return Ok(ValidateResponse {
+                user_id,
+                principal_type: "user".to_string(),
+                tenant_id,
+                tenant_name: None,
+                display_name: Some(display_name),
+                email: Some(username.clone()),
+                groups: vec!["admins".to_string()],
+                permissions: vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()],
+                expires_at: None,
+                attributes: None,
+            });
+        }
+
+        warn!(username = %username, "User exists but has no password set");
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(AuthError {
+                error: "password_required".to_string(),
+                message: "Password not set for this user. Contact administrator.".to_string(),
+            }),
+        ));
+    }
+
+    warn!(username = %username, "User not found for token request");
+    Err((
+        StatusCode::UNAUTHORIZED,
+        Json(AuthError {
+            error: "invalid_credentials".to_string(),
+            message: "Invalid username or password".to_string(),
+        }),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -682,5 +955,56 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
         assert_eq!(json["alg"], "HS256");
         assert_eq!(json["typ"], "JWT");
+    }
+
+    #[test]
+    fn test_token_request_deserialization() {
+        let json = r#"{
+            "grant_type": "password",
+            "username": "test@example.com",
+            "password": "secret123"
+        }"#;
+        
+        let request: TokenRequest = serde_json::from_str(json).unwrap();
+        
+        assert_eq!(request.grant_type, "password");
+        assert_eq!(request.username, "test@example.com");
+        assert_eq!(request.password, "secret123");
+        assert!(request.tenant_hint.is_none());
+    }
+
+    #[test]
+    fn test_token_request_with_tenant_hint() {
+        let json = r#"{
+            "grant_type": "password",
+            "username": "test@example.com",
+            "password": "secret123",
+            "tenant_hint": "my-tenant"
+        }"#;
+        
+        let request: TokenRequest = serde_json::from_str(json).unwrap();
+        
+        assert_eq!(request.tenant_hint, Some("my-tenant".to_string()));
+    }
+
+    #[test]
+    fn test_token_response_serialization() {
+        let response = TokenResponse {
+            access_token: "access.token.here".to_string(),
+            refresh_token: "refresh.token.here".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 3600,
+            user_id: "user_123".to_string(),
+            tenant_id: "tenant_456".to_string(),
+        };
+        
+        let json = serde_json::to_string(&response).unwrap();
+        
+        assert!(json.contains("access_token"));
+        assert!(json.contains("refresh_token"));
+        assert!(json.contains("Bearer"));
+        assert!(json.contains("3600"));
+        assert!(json.contains("user_123"));
+        assert!(json.contains("tenant_456"));
     }
 }

@@ -26,35 +26,39 @@ pub fn create_router_with_state(state: AppState) -> Router {
         .route("/health", get(handlers::health_check))
         .route("/health/live", get(handlers::liveness))
         .route("/health/ready", get(handlers::readiness))
+        // JWKS endpoint for JWT verification (PUBLIC - no auth required)
+        // External services like Yekta use this to verify token signatures
+        .route("/.well-known/jwks.json", get(handlers::auth::jwks))
         // API v1 routes with state
-        .nest("/api/v1", api_v1_routes(state))
+        .merge(api_v1_routes())
         // Add logging middleware to all routes
         .layer(middleware::from_fn(logging_middleware))
+        .with_state(state)
 }
 
 /// API v1 routes
-fn api_v1_routes(state: AppState) -> Router {
+fn api_v1_routes() -> Router<AppState> {
     Router::new()
         // === ADMIN ROUTES (require X-Admin-Key) ===
         // These are for initial setup and platform management
-        .nest("/admin/tenants", admin_tenant_routes(state.clone()))
-        .nest("/admin/users", admin_user_routes(state.clone()))
-        .nest("/admin/identity", admin_identity_routes(state.clone()))
+        .nest("/api/v1/admin/tenants", admin_tenant_routes())
+        .nest("/api/v1/admin/users", admin_user_routes())
+        .nest("/api/v1/admin/identity", admin_identity_routes())
         // === PROTECTED ROUTES (require X-Admin-Key OR X-API-Key) ===
         // These are for service-to-service communication
-        .nest("/tenants", protected_tenant_routes(state.clone()))
-        .nest("/users", protected_user_routes(state.clone()))
-        .nest("/authz", protected_authz_routes(state.clone()))
-        .nest("/identity", protected_identity_routes(state.clone()))
+        .nest("/api/v1/tenants", protected_tenant_routes())
+        .nest("/api/v1/users", protected_user_routes())
+        .nest("/api/v1/authz", protected_authz_routes())
+        .nest("/api/v1/identity", protected_identity_routes())
         // === PUBLIC ROUTES (for external validation) ===
         // Auth validation endpoints can be called by services like Tavana
-        .nest("/auth", auth_routes(state.clone()))
+        .nest("/api/v1/auth", auth_routes())
         // Placeholder routes (to be implemented)
-        .nest("/workspaces", placeholder_routes())
-        .nest("/applications", placeholder_routes())
-        .nest("/oauth", placeholder_routes())
-        .nest("/sync", placeholder_routes())
-        .nest("/scim/v2", placeholder_routes())
+        .nest("/api/v1/workspaces", placeholder_routes())
+        .nest("/api/v1/applications", placeholder_routes())
+        .nest("/api/v1/oauth", placeholder_routes())
+        .nest("/api/v1/sync", placeholder_routes())
+        .nest("/api/v1/scim/v2", placeholder_routes())
 }
 
 // =============================================================================
@@ -62,7 +66,7 @@ fn api_v1_routes(state: AppState) -> Router {
 // =============================================================================
 
 /// Admin tenant routes - full CRUD with admin key
-fn admin_tenant_routes(state: AppState) -> Router {
+fn admin_tenant_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::tenants::create_tenant))
         .route("/", get(handlers::tenants::list_tenants))
@@ -70,11 +74,10 @@ fn admin_tenant_routes(state: AppState) -> Router {
         .route("/{id}", put(handlers::tenants::update_tenant))
         .route("/{id}", delete(handlers::tenants::delete_tenant))
         .layer(middleware::from_fn(require_admin_api_key))
-        .with_state(state)
 }
 
 /// Admin user routes - full CRUD with admin key
-fn admin_user_routes(state: AppState) -> Router {
+fn admin_user_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::users::create_user))
         .route("/", get(handlers::users::list_users))
@@ -84,16 +87,12 @@ fn admin_user_routes(state: AppState) -> Router {
         .route("/{id}/roles", post(handlers::users::assign_role))
         .route("/{id}/roles", delete(handlers::users::remove_role))
         .route("/{id}/password", post(handlers::users::set_password))
-        .route(
-            "/{id}/password/generate",
-            post(handlers::users::generate_password),
-        )
+        .route("/{id}/password/generate", post(handlers::users::generate_password))
         .layer(middleware::from_fn(require_admin_api_key))
-        .with_state(state)
 }
 
 /// Admin identity provider routes
-fn admin_identity_routes(state: AppState) -> Router {
+fn admin_identity_routes() -> Router<AppState> {
     Router::new()
         .route("/providers", post(handlers::identity::create_provider))
         .route("/providers/{id}", put(handlers::identity::update_provider))
@@ -106,7 +105,6 @@ fn admin_identity_routes(state: AppState) -> Router {
             post(handlers::identity::trigger_sync),
         )
         .layer(middleware::from_fn(require_admin_api_key))
-        .with_state(state)
 }
 
 // =============================================================================
@@ -114,26 +112,24 @@ fn admin_identity_routes(state: AppState) -> Router {
 // =============================================================================
 
 /// Protected tenant routes - read-only for services
-fn protected_tenant_routes(state: AppState) -> Router {
+fn protected_tenant_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::tenants::list_tenants))
         .route("/{id}", get(handlers::tenants::get_tenant))
         .layer(middleware::from_fn(require_api_key))
-        .with_state(state)
 }
 
 /// Protected user routes - read-only for services
-fn protected_user_routes(state: AppState) -> Router {
+fn protected_user_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::users::list_users))
         .route("/{id}", get(handlers::users::get_user))
         .route("/{id}/roles", get(handlers::users::get_roles))
         .layer(middleware::from_fn(require_api_key))
-        .with_state(state)
 }
 
 /// Protected authorization routes
-fn protected_authz_routes(state: AppState) -> Router {
+fn protected_authz_routes() -> Router<AppState> {
     Router::new()
         // Read operations
         .route("/check", post(handlers::authz::check_permission))
@@ -147,11 +143,10 @@ fn protected_authz_routes(state: AppState) -> Router {
             delete(handlers::authz::delete_relationship),
         )
         .layer(middleware::from_fn(require_api_key))
-        .with_state(state)
 }
 
 /// Protected identity routes - read-only
-fn protected_identity_routes(state: AppState) -> Router {
+fn protected_identity_routes() -> Router<AppState> {
     Router::new()
         .route("/providers", get(handlers::identity::list_providers))
         .route("/providers/{id}", get(handlers::identity::get_provider))
@@ -165,7 +160,6 @@ fn protected_identity_routes(state: AppState) -> Router {
         )
         .route("/health", get(handlers::identity::health_check))
         .layer(middleware::from_fn(require_api_key))
-        .with_state(state)
 }
 
 // =============================================================================
@@ -174,15 +168,16 @@ fn protected_identity_routes(state: AppState) -> Router {
 
 /// Authentication validation routes (for external services like Tavana)
 /// These endpoints validate credentials/tokens - caller provides the secret
-fn auth_routes(state: AppState) -> Router {
+fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/validate", post(handlers::auth::validate_credentials))
         .route("/validate-token", post(handlers::auth::validate_token))
-        .with_state(state)
+        // Token issuance endpoint (OAuth2 password grant)
+        .route("/token", post(handlers::auth::issue_token))
 }
 
 /// Placeholder routes for unimplemented endpoints
-fn placeholder_routes() -> Router {
+fn placeholder_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::not_implemented))
         .route("/", post(handlers::not_implemented))
