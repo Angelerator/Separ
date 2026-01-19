@@ -41,7 +41,8 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 /// Generate a random password
 pub fn generate_password(length: usize) -> String {
     use rand::Rng;
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    const CHARSET: &[u8] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
     let mut rng = rand::thread_rng();
     (0..length)
         .map(|_| {
@@ -86,4 +87,3 @@ mod tests {
         assert!(hash.starts_with("$argon2"));
     }
 }
-

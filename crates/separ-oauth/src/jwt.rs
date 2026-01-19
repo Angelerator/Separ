@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn test_generate_tokens_creates_valid_access_token() {
         let service = create_test_jwt_service();
-        
+
         let result = service.generate_tokens(
             "user_123",
             "tenant_456",
@@ -282,10 +282,10 @@ mod tests {
             vec!["admin".to_string()],
             vec!["read".to_string(), "write".to_string()],
         );
-        
+
         assert!(result.is_ok());
         let tokens = result.unwrap();
-        
+
         assert!(!tokens.access_token.is_empty());
         assert!(!tokens.refresh_token.is_empty());
         assert_eq!(tokens.token_type, "Bearer");
@@ -295,18 +295,20 @@ mod tests {
     #[test]
     fn test_validate_token_decodes_claims_correctly() {
         let service = create_test_jwt_service();
-        
-        let tokens = service.generate_tokens(
-            "user_123",
-            "tenant_456",
-            Some("test@example.com"),
-            Some("Test User"),
-            vec!["admin".to_string()],
-            vec!["read".to_string(), "write".to_string()],
-        ).unwrap();
-        
+
+        let tokens = service
+            .generate_tokens(
+                "user_123",
+                "tenant_456",
+                Some("test@example.com"),
+                Some("Test User"),
+                vec!["admin".to_string()],
+                vec!["read".to_string(), "write".to_string()],
+            )
+            .unwrap();
+
         let claims = service.validate_token(&tokens.access_token).unwrap();
-        
+
         assert_eq!(claims.sub, "user_123");
         assert_eq!(claims.tenant_id, "tenant_456");
         assert_eq!(claims.email, Some("test@example.com".to_string()));
@@ -319,9 +321,9 @@ mod tests {
     #[test]
     fn test_validate_token_rejects_invalid_token() {
         let service = create_test_jwt_service();
-        
+
         let result = service.validate_token("invalid.token.here");
-        
+
         assert!(result.is_err());
     }
 
@@ -339,16 +341,11 @@ mod tests {
             3600,
             86400,
         );
-        
-        let tokens = service1.generate_tokens(
-            "user_123",
-            "tenant_456",
-            None,
-            None,
-            vec![],
-            vec![],
-        ).unwrap();
-        
+
+        let tokens = service1
+            .generate_tokens("user_123", "tenant_456", None, None, vec![], vec![])
+            .unwrap();
+
         // Token from service1 should not validate with service2 (different issuer)
         let result = service2.validate_token(&tokens.access_token);
         assert!(result.is_err());
@@ -357,22 +354,26 @@ mod tests {
     #[test]
     fn test_refresh_token_generates_new_token_pair() {
         let service = create_test_jwt_service();
-        
-        let original_tokens = service.generate_tokens(
-            "user_123",
-            "tenant_456",
-            Some("test@example.com"),
-            Some("Test User"),
-            vec!["admin".to_string()],
-            vec!["read".to_string()],
-        ).unwrap();
-        
-        let new_tokens = service.refresh_access_token(&original_tokens.refresh_token).unwrap();
-        
+
+        let original_tokens = service
+            .generate_tokens(
+                "user_123",
+                "tenant_456",
+                Some("test@example.com"),
+                Some("Test User"),
+                vec!["admin".to_string()],
+                vec!["read".to_string()],
+            )
+            .unwrap();
+
+        let new_tokens = service
+            .refresh_access_token(&original_tokens.refresh_token)
+            .unwrap();
+
         // New tokens should be different
         assert_ne!(new_tokens.access_token, original_tokens.access_token);
         assert_ne!(new_tokens.refresh_token, original_tokens.refresh_token);
-        
+
         // But claims should be preserved
         let claims = service.validate_token(&new_tokens.access_token).unwrap();
         assert_eq!(claims.sub, "user_123");
@@ -382,16 +383,11 @@ mod tests {
     #[test]
     fn test_refresh_with_access_token_fails() {
         let service = create_test_jwt_service();
-        
-        let tokens = service.generate_tokens(
-            "user_123",
-            "tenant_456",
-            None,
-            None,
-            vec![],
-            vec![],
-        ).unwrap();
-        
+
+        let tokens = service
+            .generate_tokens("user_123", "tenant_456", None, None, vec![], vec![])
+            .unwrap();
+
         // Should not be able to refresh using an access token
         let result = service.refresh_access_token(&tokens.access_token);
         assert!(result.is_err());
@@ -400,9 +396,9 @@ mod tests {
     #[test]
     fn test_get_jwks_returns_key_metadata() {
         let service = create_test_jwt_service();
-        
+
         let jwks = service.get_jwks();
-        
+
         assert!(!jwks.keys.is_empty());
         let key = &jwks.keys[0];
         assert_eq!(key.kty, "oct");

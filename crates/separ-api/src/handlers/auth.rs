@@ -448,13 +448,12 @@ async fn validate_password(
     }
 
     // No stored credentials - check if user exists in database first
-    let user_exists: Option<(String, String)> = sqlx::query_as(
-        "SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1",
-    )
-    .bind(username)
-    .fetch_optional(&state.db_pool)
-    .await
-    .unwrap_or(None);
+    let user_exists: Option<(String, String)> =
+        sqlx::query_as("SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1")
+            .bind(username)
+            .fetch_optional(&state.db_pool)
+            .await
+            .unwrap_or(None);
 
     if let Some((user_id, display_name)) = user_exists {
         // User exists in DB but has no password - check if they have platform access
@@ -850,7 +849,12 @@ async fn validate_password_internal(
                 .unwrap_or(false);
 
             let permissions = if has_platform_access {
-                vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()]
+                vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "query".to_string(),
+                    "admin".to_string(),
+                ]
             } else {
                 vec!["read".to_string(), "query".to_string()]
             };
@@ -862,7 +866,11 @@ async fn validate_password_internal(
                 tenant_name: None,
                 display_name: Some(username.clone()),
                 email: Some(username.clone()),
-                groups: if has_platform_access { vec!["admins".to_string()] } else { vec![] },
+                groups: if has_platform_access {
+                    vec!["admins".to_string()]
+                } else {
+                    vec![]
+                },
                 permissions,
                 expires_at: None,
                 attributes: None,
@@ -887,13 +895,12 @@ async fn validate_password_internal(
     }
 
     // Check if user exists but has no password
-    let user_exists: Option<(String, String)> = sqlx::query_as(
-        "SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1",
-    )
-    .bind(username)
-    .fetch_optional(&state.db_pool)
-    .await
-    .unwrap_or(None);
+    let user_exists: Option<(String, String)> =
+        sqlx::query_as("SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1")
+            .bind(username)
+            .fetch_optional(&state.db_pool)
+            .await
+            .unwrap_or(None);
 
     if let Some((user_id, display_name)) = user_exists {
         let has_platform_access = state
@@ -918,7 +925,12 @@ async fn validate_password_internal(
                 display_name: Some(display_name),
                 email: Some(username.clone()),
                 groups: vec!["admins".to_string()],
-                permissions: vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()],
+                permissions: vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "query".to_string(),
+                    "admin".to_string(),
+                ],
                 expires_at: None,
                 attributes: None,
             });
@@ -964,9 +976,9 @@ mod tests {
             "username": "test@example.com",
             "password": "secret123"
         }"#;
-        
+
         let request: TokenRequest = serde_json::from_str(json).unwrap();
-        
+
         assert_eq!(request.grant_type, "password");
         assert_eq!(request.username, "test@example.com");
         assert_eq!(request.password, "secret123");
@@ -981,9 +993,9 @@ mod tests {
             "password": "secret123",
             "tenant_hint": "my-tenant"
         }"#;
-        
+
         let request: TokenRequest = serde_json::from_str(json).unwrap();
-        
+
         assert_eq!(request.tenant_hint, Some("my-tenant".to_string()));
     }
 
@@ -997,9 +1009,9 @@ mod tests {
             user_id: "user_123".to_string(),
             tenant_id: "tenant_456".to_string(),
         };
-        
+
         let json = serde_json::to_string(&response).unwrap();
-        
+
         assert!(json.contains("access_token"));
         assert!(json.contains("refresh_token"));
         assert!(json.contains("Bearer"));
