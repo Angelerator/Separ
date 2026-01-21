@@ -93,12 +93,95 @@ pub async fn create_user(
     Json(request): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<UserDto>>), (StatusCode, Json<ApiResponse<()>>)> {
     let user_id = UserId::new();
-    info!(
-        "Creating user: {} for tenant {}",
-        request.email, request.tenant_id
-    );
+    let now = chrono::Utc::now();
+    let email = request.email.trim().to_lowercase();
 
-    // Write the user-tenant relationship using the client directly
+    info!("Creating user: {} for tenant {}", email, request.tenant_id);
+
+    // 1. Insert user into PostgreSQL
+    let insert_result = sqlx::query(
+        r#"
+        INSERT INTO users (id, email, display_name, tenant_id, status, created_at, updated_at)
+        VALUES ($1::uuid, $2, $3, $4::uuid, 'active', $5, $5)
+        "#,
+    )
+    .bind(user_id.as_uuid())
+    .bind(&email)
+    .bind(&request.display_name)
+    .bind(request.tenant_id)
+    .bind(now)
+    .execute(&state.db_pool)
+    .await;
+
+    if let Err(e) = insert_result {
+        warn!("Failed to insert user into database: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(ApiError {
+                    code: "USER_CREATE_FAILED".to_string(),
+                    message: format!("Failed to create user: {}", e),
+                    details: None,
+                }),
+            }),
+        ));
+    }
+
+    // 2. If password provided, hash and store it
+    if let Some(password) = &request.password {
+        let password_hash = crate::password::hash_password(password).map_err(|e| {
+            warn!("Failed to hash password: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "PASSWORD_HASH_FAILED".to_string(),
+                        message: "Failed to hash password".to_string(),
+                        details: None,
+                    }),
+                }),
+            )
+        })?;
+
+        let cred_result = sqlx::query(
+            r#"
+            INSERT INTO user_credentials (user_id, password_hash, created_at, updated_at)
+            VALUES ($1, $2, $3, $3)
+            "#,
+        )
+        .bind(user_id.to_string())
+        .bind(&password_hash)
+        .bind(now)
+        .execute(&state.db_pool)
+        .await;
+
+        if let Err(e) = cred_result {
+            warn!("Failed to store user credentials: {}", e);
+            // Rollback user creation
+            let _ = sqlx::query("DELETE FROM users WHERE id = $1::uuid")
+                .bind(user_id.as_uuid())
+                .execute(&state.db_pool)
+                .await;
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "CREDENTIAL_CREATE_FAILED".to_string(),
+                        message: format!("Failed to store credentials: {}", e),
+                        details: None,
+                    }),
+                }),
+            ));
+        }
+    }
+
+    // 3. Write the user-tenant relationship to SpiceDB
     state
         .auth_service
         .client()
@@ -126,7 +209,7 @@ pub async fn create_user(
             )
         })?;
 
-    // Assign roles if provided
+    // 4. Assign roles if provided
     let mut assigned_roles = Vec::new();
     if let Some(roles) = &request.roles {
         for role in roles {
@@ -186,12 +269,12 @@ pub async fn create_user(
     let user = UserDto {
         id: user_id.to_string(),
         external_id: request.external_id,
-        email: request.email,
+        email,
         display_name: request.display_name,
         tenant_id: request.tenant_id.to_string(),
         roles: assigned_roles,
         active: true,
-        created_at: chrono::Utc::now().to_rfc3339(),
+        created_at: now.to_rfc3339(),
     };
 
     Ok((
