@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.84-bookworm AS builder
+FROM rust:1.85-bookworm AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
 # Build release binary with TLS support
-RUN cargo build --release --locked --package separ-server
+RUN cargo build --release --package separ-server
 
 # Runtime stage
 FROM debian:bookworm-slim
