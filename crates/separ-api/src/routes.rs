@@ -29,7 +29,7 @@ use crate::state::AppState;
 const MAX_BODY_SIZE: usize = 1024 * 1024;
 
 /// Create the main API router (without state - for basic endpoints)
-/// 
+///
 /// Note: For full health checks, use `create_router_with_state` instead.
 pub fn create_router() -> Router {
     Router::new()
@@ -38,7 +38,7 @@ pub fn create_router() -> Router {
 }
 
 /// Create the full API router with application state
-/// 
+///
 /// Security layers applied (in order):
 /// 1. Request body size limit (DoS prevention)
 /// 2. Security headers (HSTS, X-Frame-Options, etc.)

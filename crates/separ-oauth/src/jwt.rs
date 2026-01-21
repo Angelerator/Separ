@@ -14,7 +14,7 @@ use tracing::{debug, instrument, warn};
 use separ_core::{Result, SeparError};
 
 /// JWT claims structure
-/// 
+///
 /// Contains all standard and custom claims for Separ tokens.
 /// Security: All required claims (iss, aud, exp, nbf, iat, jti) are validated.
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,7 +79,7 @@ pub struct JwtService {
 
 impl JwtService {
     /// Create a new JWT service
-    /// 
+    ///
     /// # Security Requirements
     /// - Secret must be at least 32 bytes (256 bits) for HS256
     /// - Issuer and audience should be unique to your deployment
@@ -99,7 +99,7 @@ impl JwtService {
         }
 
         let audience = issuer.clone(); // Use issuer as audience by default
-        
+
         Self {
             secret,
             issuer,
@@ -108,7 +108,7 @@ impl JwtService {
             refresh_token_expiry_secs,
         }
     }
-    
+
     /// Create a new JWT service with explicit audience
     pub fn with_audience(mut self, audience: String) -> Self {
         self.audience = audience;
@@ -116,7 +116,7 @@ impl JwtService {
     }
 
     /// Generate a token pair for a user
-    /// 
+    ///
     /// Security: Uses explicit algorithm header to prevent algorithm confusion attacks
     #[instrument(skip(self))]
     pub fn generate_tokens(
@@ -130,7 +130,7 @@ impl JwtService {
     ) -> Result<TokenPair> {
         let now = Utc::now();
         let jti = uuid::Uuid::new_v4().to_string();
-        
+
         // Explicit header with algorithm to prevent algorithm confusion attacks
         let header = Header::new(JWT_ALGORITHM);
 
@@ -198,7 +198,7 @@ impl JwtService {
     }
 
     /// Validate and decode a token
-    /// 
+    ///
     /// Security measures:
     /// - Explicit algorithm enforcement (only HS256 accepted)
     /// - Issuer validation
@@ -209,17 +209,17 @@ impl JwtService {
     pub fn validate_token(&self, token: &str) -> Result<Claims> {
         // Create validation with explicit algorithm to prevent algorithm confusion attacks
         let mut validation = Validation::new(JWT_ALGORITHM);
-        
+
         // Enforce issuer
         validation.set_issuer(&[&self.issuer]);
-        
+
         // Enforce audience
         validation.set_audience(&[&self.audience]);
-        
+
         // Enforce time-based claims
         validation.validate_exp = true;
         validation.validate_nbf = true;
-        
+
         // Reject tokens with 'none' algorithm (already handled by explicit algorithm, but extra safety)
         validation.validate_aud = true;
 

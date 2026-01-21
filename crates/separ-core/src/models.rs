@@ -1,7 +1,7 @@
 //! Domain models for the Separ authorization platform
 //!
 //! ## ZedToken Support
-//! 
+//!
 //! Key resource models include an optional `zed_token` field for SpiceDB consistency.
 //! This follows SpiceDB best practices:
 //! - Store ZedToken alongside resources after permission changes
@@ -499,7 +499,7 @@ pub enum AuditEventType {
     PermissionCheck,
     RelationshipWrite,
     RelationshipDelete,
-    
+
     // Authentication events (SECURITY)
     UserLogin,
     UserLoginFailed,
@@ -508,35 +508,35 @@ pub enum AuditEventType {
     TokenRevoked,
     PasswordChanged,
     PasswordResetRequested,
-    
+
     // API key events (SECURITY)
     ApiKeyCreated,
     ApiKeyRevoked,
     ApiKeyUsed,
     ApiKeyRateLimited,
-    
+
     // User lifecycle events
     UserCreated,
     UserUpdated,
     UserDeleted,
     UserSuspended,
     UserActivated,
-    
+
     // Tenant events
     TenantCreated,
     TenantUpdated,
     TenantSuspended,
-    
+
     // Application events
     ApplicationCreated,
     ApplicationUpdated,
     ApplicationDeleted,
-    
+
     // Admin events (SECURITY)
     AdminAction,
     PrivilegeEscalation,
     SuspiciousActivity,
-    
+
     // Sync events
     SyncEvent,
 }

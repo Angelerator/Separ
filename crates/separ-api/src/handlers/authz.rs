@@ -356,7 +356,7 @@ pub async fn read_relationships(
 }
 
 /// Parse subject type from string
-/// 
+///
 /// Supports all subject types defined in the SpiceDB schema:
 /// - user: Individual user
 /// - service_account: Service account for machine-to-machine auth

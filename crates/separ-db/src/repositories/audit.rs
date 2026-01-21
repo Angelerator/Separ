@@ -8,12 +8,11 @@
 //! - Privilege escalation attempts
 
 use async_trait::async_trait;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use tracing::{info, instrument, warn};
 
 use separ_core::{
-    AuditEvent, AuditEventType, AuditFilter, AuditRepository, Result, SeparError,
-    TenantId,
+    AuditEvent, AuditEventType, AuditFilter, AuditRepository, Result, SeparError, TenantId,
 };
 
 /// PostgreSQL implementation of AuditRepository
@@ -30,7 +29,7 @@ impl PgAuditRepository {
 #[async_trait]
 impl AuditRepository for PgAuditRepository {
     /// Log an audit event
-    /// 
+    ///
     /// Security-critical events are logged with additional context
     #[instrument(skip(self, event), fields(event_type = ?event.event_type, actor_id = %event.actor.id))]
     async fn log(&self, event: &AuditEvent) -> Result<()> {
@@ -89,7 +88,7 @@ impl AuditRepository for PgAuditRepository {
         .bind(&metadata_json)
         .bind(&event.ip_address)
         .bind(&event.user_agent)
-        .bind(&event.timestamp)
+        .bind(event.timestamp)
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -150,11 +149,11 @@ impl AuditRepository for PgAuditRepository {
         }
 
         query.push_str(" ORDER BY created_at DESC LIMIT $L OFFSET $O");
-        
+
         // For now, return empty - full implementation would build the query dynamically
         // This is a placeholder showing the structure
         let _ = (tenant_id, offset, limit, query);
-        
+
         Ok(vec![])
     }
 }

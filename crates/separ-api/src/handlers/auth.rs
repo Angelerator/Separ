@@ -1020,7 +1020,7 @@ pub struct RegisterUserResponse {
 /// POST /api/v1/auth/register
 ///
 /// This endpoint allows users to self-register from desktop apps like Hormoz.
-/// 
+///
 /// ## Workspace-First Model
 /// - Creates a new user WITHOUT assigning to a tenant
 /// - Creates a personal workspace for the user (user is owner)
@@ -1159,8 +1159,11 @@ pub async fn register_user(
     // Create personal workspace for user
     let workspace_id = uuid::Uuid::new_v4();
     let workspace_id_str = workspace_id.to_string();
-    let workspace_slug = format!("personal-{}", user_id_str.chars().take(8).collect::<String>());
-    
+    let workspace_slug = format!(
+        "personal-{}",
+        user_id_str.chars().take(8).collect::<String>()
+    );
+
     let workspace_result = sqlx::query(
         r#"
         INSERT INTO workspaces (id, tenant_id, owner_user_id, name, slug, description, workspace_type, created_at, updated_at)
@@ -1193,7 +1196,13 @@ pub async fn register_user(
         let _ = state
             .auth_service
             .client()
-            .write_relationship("workspace", &workspace_id_str, "owner", "user", &user_id_str)
+            .write_relationship(
+                "workspace",
+                &workspace_id_str,
+                "owner",
+                "user",
+                &user_id_str,
+            )
             .await;
     }
 

@@ -76,10 +76,8 @@ impl AppState {
         jwt_service: JwtService,
     ) -> Self {
         // Create cached SpiceDB client with default config
-        let cached_spicedb = CachedSpiceDbClient::new(
-            spicedb_client.clone(),
-            CachedClientConfig::default(),
-        );
+        let cached_spicedb =
+            CachedSpiceDbClient::new(spicedb_client.clone(), CachedClientConfig::default());
 
         // API key cache: 1000 entries, 5 minute TTL
         let api_key_cache = Cache::builder()
@@ -120,11 +118,11 @@ impl AppState {
     }
 
     /// Get or create a rate limiter for a specific API key
-    /// 
+    ///
     /// Creates a new rate limiter based on the key's rate_limit_per_minute setting.
     pub async fn get_api_key_rate_limiter(&self, api_key: &ApiKey) -> ApiKeyRateLimitEntry {
         let key_id = *api_key.id.as_uuid();
-        
+
         // Check if we already have a limiter for this key
         if let Some(entry) = self.api_key_rate_limiters.get(&key_id).await {
             // If the rate limit changed, we need to create a new limiter
@@ -132,31 +130,33 @@ impl AppState {
                 return entry;
             }
         }
-        
+
         // Create a new rate limiter for this API key
         let limit_per_minute = api_key.rate_limit_per_minute.max(1) as u32;
         let limit_per_second = (limit_per_minute / 60).max(1);
         let burst = (limit_per_minute / 30).max(2); // Allow ~2 seconds burst
-        
+
         let quota = Quota::per_second(NonZeroU32::new(limit_per_second).unwrap())
             .allow_burst(NonZeroU32::new(burst).unwrap());
-        
+
         let entry = ApiKeyRateLimitEntry {
             limiter: Arc::new(RateLimiter::keyed(quota)),
             limit_per_minute: api_key.rate_limit_per_minute,
         };
-        
-        self.api_key_rate_limiters.insert(key_id, entry.clone()).await;
+
+        self.api_key_rate_limiters
+            .insert(key_id, entry.clone())
+            .await;
         entry
     }
 
     /// Check rate limit for an API key
-    /// 
+    ///
     /// Returns Ok(remaining) if allowed, Err(retry_after_seconds) if rate limited.
     pub async fn check_api_key_rate_limit(&self, api_key: &ApiKey) -> Result<u32, u64> {
         let entry = self.get_api_key_rate_limiter(api_key).await;
         let key_id = *api_key.id.as_uuid();
-        
+
         match entry.limiter.check_key(&key_id) {
             Ok(_) => {
                 // Approximate remaining (governor doesn't expose this directly)
