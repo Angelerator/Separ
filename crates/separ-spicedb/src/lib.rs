@@ -1,5 +1,6 @@
 //! SpiceDB client and authorization service for Separ
 
+pub mod cached_client;
 pub mod client;
 pub mod schema;
 pub mod service;
@@ -7,6 +8,7 @@ pub mod service;
 #[cfg(test)]
 mod tests;
 
+pub use cached_client::{CachedClientConfig, CachedSpiceDbClient, ConsistencyMode};
 pub use client::{SpiceDbClient, SpiceDbConfig};
 pub use schema::YEKTA_SCHEMA;
 pub use service::SpiceDbAuthorizationService;

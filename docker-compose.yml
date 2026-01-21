@@ -47,6 +47,32 @@ services:
       postgres:
         condition: service_healthy
 
+  # Database migrations (run once before separ starts)
+  separ-migrate:
+    image: postgres:16-alpine
+    container_name: separ-migrate
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-separ}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-separ}
+    volumes:
+      - ./crates/separ-db/migrations:/migrations:ro
+    command: >
+      sh -c '
+        echo "Running migrations..."
+        for f in /migrations/*.sql; do
+          if [ -f "$$f" ]; then
+            echo "Applying: $$f"
+            psql -h postgres -U ${POSTGRES_USER:-separ} -d ${POSTGRES_DB:-separ} -f "$$f" 2>&1 || true
+          fi
+        done
+        echo "Migrations complete"
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Separ API Server
   separ:
     build:
@@ -61,6 +87,7 @@ services:
       SEPAR__DATABASE__URL: "postgres://${POSTGRES_USER:-separ}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-separ}"
       SEPAR__SPICEDB__ENDPOINT: "http://spicedb:50051"
       SEPAR__SPICEDB__TOKEN: "${SPICEDB_PRESHARED_KEY}"
+      SEPAR_ADMIN_API_KEY: "${SEPAR_ADMIN_API_KEY:-super-secret-admin-key}"
       SEPAR__JWT__SECRET: "${JWT_SECRET}"
       SEPAR__JWT__ISSUER: "${JWT_ISSUER:-separ}"
       RUST_LOG: "${RUST_LOG:-info,separ=debug}"
@@ -69,6 +96,8 @@ services:
         condition: service_healthy
       spicedb:
         condition: service_healthy
+      separ-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s

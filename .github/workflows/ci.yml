@@ -31,6 +31,25 @@ env:
 
 jobs:
   # =============================================================================
+  # SpiceDB Schema Validation
+  # =============================================================================
+  spicedb-validate:
+    name: SpiceDB Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate SpiceDB Schema
+        uses: authzed/action-spicedb-validate@v1
+        with:
+          validationfile: "tests/spicedb_assertions.yaml"
+      
+      - name: Validate Workspace-First Model
+        uses: authzed/action-spicedb-validate@v1
+        with:
+          validationfile: "spicedb/validations/workspace-first-model.yaml"
+
+  # =============================================================================
   # Check & Lint
   # =============================================================================
   check:
@@ -245,7 +264,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [check, fmt, clippy, test]
+    needs: [spicedb-validate, check, fmt, clippy, test]
     steps:
       - uses: actions/checkout@v4
       

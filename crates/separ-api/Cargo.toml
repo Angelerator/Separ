@@ -23,3 +23,19 @@ base64 = { workspace = true }
 argon2 = { workspace = true }
 rand = { workspace = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
+sha2 = { workspace = true }
+hex = "0.4"
+
+# Rate limiting
+governor = { workspace = true }
+tower_governor = { workspace = true }
+
+# Caching for permission checks
+moka = { workspace = true }
+
+# Request ID tracing
+http = { workspace = true }
+
+# Input validation
+regex = "1"
+once_cell = "1"

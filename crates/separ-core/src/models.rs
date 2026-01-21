@@ -1,4 +1,12 @@
 //! Domain models for the Separ authorization platform
+//!
+//! ## ZedToken Support
+//! 
+//! Key resource models include an optional `zed_token` field for SpiceDB consistency.
+//! This follows SpiceDB best practices:
+//! - Store ZedToken alongside resources after permission changes
+//! - Use for `at_least_as_fresh` consistency in subsequent permission checks
+//! - Ensures read-after-write consistency without `fully_consistent` overhead
 
 use crate::ids::*;
 use chrono::{DateTime, Utc};
@@ -16,6 +24,10 @@ pub struct Platform {
     pub name: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// SpiceDB ZedToken for consistency tracking
+    /// Updated when permissions for this platform are modified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zed_token: Option<String>,
 }
 
 /// Tenant represents a company/organization using the platform
@@ -30,6 +42,10 @@ pub struct Tenant {
     pub metadata: HashMap<String, serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// SpiceDB ZedToken for consistency tracking
+    /// Updated when permissions for this tenant are modified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zed_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +84,10 @@ pub struct Workspace {
     pub metadata: HashMap<String, serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// SpiceDB ZedToken for consistency tracking
+    /// Updated when permissions for this workspace are modified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zed_token: Option<String>,
 }
 
 /// Application represents a registered application within a workspace
@@ -85,6 +105,10 @@ pub struct Application {
     pub metadata: HashMap<String, serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// SpiceDB ZedToken for consistency tracking
+    /// Updated when permissions for this application are modified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zed_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +152,10 @@ pub struct User {
     pub last_login_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// SpiceDB ZedToken for consistency tracking
+    /// Updated when permissions for this user are modified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zed_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,9 +229,25 @@ pub struct Subject {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubjectType {
+    /// Individual user
     User,
+    /// Service account for machine-to-machine auth
     ServiceAccount,
+    /// Group of users
     Group,
+    /// The entire platform (root level)
+    Platform,
+    /// A tenant/organization
+    Tenant,
+    /// A workspace within a tenant
+    Workspace,
+    /// An application within a workspace
+    Application,
+    /// A role that can be assigned to users
+    Role,
+    /// Anonymous/unauthenticated access
+    Anonymous,
+    /// Wildcard for all subjects
     Wildcard,
 }
 
@@ -356,18 +400,62 @@ pub enum SyncStatus {
 // =============================================================================
 
 /// API key for service-to-service authentication
+/// Following SpiceDB best practices: least privilege, rotation support
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKey {
     pub id: ApiKeyId,
-    pub tenant_id: TenantId,
-    pub application_id: Option<ApplicationId>,
-    pub name: String,
+    /// First 12 characters of the key (for identification in logs/UI)
     pub key_prefix: String,
+    /// SHA-256 hash of the full key (never store plaintext!)
     pub key_hash: String,
+    /// Human-readable name
+    pub name: String,
+    /// Description of the key's purpose
+    pub description: Option<String>,
+    /// Service account this key belongs to (optional)
+    pub service_account_id: Option<ServiceAccountId>,
+    /// User who created this key
+    pub created_by: Option<UserId>,
+    /// Tenant the key belongs to
+    pub tenant_id: Option<TenantId>,
+    /// Application this key belongs to (optional)
+    pub application_id: Option<ApplicationId>,
+    /// Permission scopes (least privilege)
     pub scopes: Vec<String>,
+    /// Rate limit per minute
+    pub rate_limit_per_minute: i32,
+    /// Expiration time (optional)
     pub expires_at: Option<DateTime<Utc>>,
+    /// Last time the key was used
     pub last_used_at: Option<DateTime<Utc>>,
+    /// When the key was revoked (None = active)
+    pub revoked_at: Option<DateTime<Utc>>,
+    /// Who revoked the key
+    pub revoked_by: Option<UserId>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl ApiKey {
+    /// Check if the key is currently valid
+    pub fn is_valid(&self) -> bool {
+        // Not revoked
+        if self.revoked_at.is_some() {
+            return false;
+        }
+        // Not expired
+        if let Some(expires_at) = self.expires_at {
+            if expires_at < Utc::now() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Check if the key has a specific scope
+    pub fn has_scope(&self, scope: &str) -> bool {
+        self.scopes.contains(&scope.to_string()) || self.scopes.contains(&"*".to_string())
+    }
 }
 
 /// Webhook configuration for sending events
@@ -407,18 +495,49 @@ pub struct AuditEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuditEventType {
+    // Permission events
     PermissionCheck,
     RelationshipWrite,
     RelationshipDelete,
+    
+    // Authentication events (SECURITY)
     UserLogin,
+    UserLoginFailed,
     UserLogout,
+    TokenRefresh,
+    TokenRevoked,
+    PasswordChanged,
+    PasswordResetRequested,
+    
+    // API key events (SECURITY)
+    ApiKeyCreated,
+    ApiKeyRevoked,
+    ApiKeyUsed,
+    ApiKeyRateLimited,
+    
+    // User lifecycle events
     UserCreated,
     UserUpdated,
     UserDeleted,
+    UserSuspended,
+    UserActivated,
+    
+    // Tenant events
     TenantCreated,
     TenantUpdated,
+    TenantSuspended,
+    
+    // Application events
     ApplicationCreated,
     ApplicationUpdated,
+    ApplicationDeleted,
+    
+    // Admin events (SECURITY)
+    AdminAction,
+    PrivilegeEscalation,
+    SuspiciousActivity,
+    
+    // Sync events
     SyncEvent,
 }
 
@@ -435,4 +554,28 @@ pub enum AuditResult {
     Success,
     Denied,
     Error,
+}
+
+/// Request to create a new API key
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub service_account_id: Option<ServiceAccountId>,
+    pub scopes: Vec<String>,
+    pub expires_in_days: Option<i32>,
+    pub rate_limit_per_minute: Option<i32>,
+}
+
+/// Response when creating an API key (includes the plaintext key ONCE)
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateApiKeyResponse {
+    pub id: ApiKeyId,
+    /// The full API key - ONLY returned once at creation time!
+    pub key: String,
+    pub key_prefix: String,
+    pub name: String,
+    pub scopes: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
 }

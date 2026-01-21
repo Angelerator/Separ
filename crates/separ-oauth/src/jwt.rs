@@ -1,13 +1,22 @@
 //! JWT token service for Separ
+//!
+//! Security Features:
+//! - Explicit algorithm enforcement (prevents algorithm confusion attacks)
+//! - Required claims validation (iss, exp, nbf, aud)
+//! - Token type validation (access vs refresh)
+//! - JTI for token revocation support
 
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 use separ_core::{Result, SeparError};
 
 /// JWT claims structure
+/// 
+/// Contains all standard and custom claims for Separ tokens.
+/// Security: All required claims (iss, aud, exp, nbf, iat, jti) are validated.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     /// Subject (user ID)
@@ -16,13 +25,15 @@ pub struct Claims {
     pub tenant_id: String,
     /// Issuer
     pub iss: String,
+    /// Audience - who this token is intended for
+    pub aud: String,
     /// Expiration time (Unix timestamp)
     pub exp: i64,
     /// Issued at (Unix timestamp)
     pub iat: i64,
     /// Not before (Unix timestamp)
     pub nbf: i64,
-    /// JWT ID
+    /// JWT ID (unique token identifier for revocation support)
     pub jti: String,
     /// Token type (access or refresh)
     pub token_type: String,
@@ -49,32 +60,64 @@ pub struct TokenPair {
     pub expires_in: i64,
 }
 
+/// Allowed algorithm for JWT signing/verification
+/// Using HS256 with explicit enforcement to prevent algorithm confusion attacks
+const JWT_ALGORITHM: Algorithm = Algorithm::HS256;
+
+/// Minimum secret length (256 bits = 32 bytes)
+const MIN_SECRET_LENGTH: usize = 32;
+
 /// JWT service for creating and validating tokens
 #[derive(Clone)]
 pub struct JwtService {
     secret: String,
     issuer: String,
+    audience: String,
     access_token_expiry_secs: i64,
     refresh_token_expiry_secs: i64,
 }
 
 impl JwtService {
     /// Create a new JWT service
+    /// 
+    /// # Security Requirements
+    /// - Secret must be at least 32 bytes (256 bits) for HS256
+    /// - Issuer and audience should be unique to your deployment
     pub fn new(
         secret: String,
         issuer: String,
         access_token_expiry_secs: i64,
         refresh_token_expiry_secs: i64,
     ) -> Self {
+        // Warn if secret is too short (but don't panic for backward compatibility)
+        if secret.len() < MIN_SECRET_LENGTH {
+            warn!(
+                "JWT secret is only {} bytes, recommended minimum is {} bytes for HS256",
+                secret.len(),
+                MIN_SECRET_LENGTH
+            );
+        }
+
+        let audience = issuer.clone(); // Use issuer as audience by default
+        
         Self {
             secret,
             issuer,
+            audience,
             access_token_expiry_secs,
             refresh_token_expiry_secs,
         }
     }
+    
+    /// Create a new JWT service with explicit audience
+    pub fn with_audience(mut self, audience: String) -> Self {
+        self.audience = audience;
+        self
+    }
 
     /// Generate a token pair for a user
+    /// 
+    /// Security: Uses explicit algorithm header to prevent algorithm confusion attacks
     #[instrument(skip(self))]
     pub fn generate_tokens(
         &self,
@@ -87,12 +130,16 @@ impl JwtService {
     ) -> Result<TokenPair> {
         let now = Utc::now();
         let jti = uuid::Uuid::new_v4().to_string();
+        
+        // Explicit header with algorithm to prevent algorithm confusion attacks
+        let header = Header::new(JWT_ALGORITHM);
 
         // Create access token
         let access_claims = Claims {
             sub: user_id.to_string(),
             tenant_id: tenant_id.to_string(),
             iss: self.issuer.clone(),
+            aud: self.audience.clone(),
             exp: (now + Duration::seconds(self.access_token_expiry_secs)).timestamp(),
             iat: now.timestamp(),
             nbf: now.timestamp(),
@@ -105,7 +152,7 @@ impl JwtService {
         };
 
         let access_token = encode(
-            &Header::default(),
+            &header,
             &access_claims,
             &EncodingKey::from_secret(self.secret.as_bytes()),
         )
@@ -119,6 +166,7 @@ impl JwtService {
             sub: user_id.to_string(),
             tenant_id: tenant_id.to_string(),
             iss: self.issuer.clone(),
+            aud: self.audience.clone(),
             exp: (now + Duration::seconds(self.refresh_token_expiry_secs)).timestamp(),
             iat: now.timestamp(),
             nbf: now.timestamp(),
@@ -131,7 +179,7 @@ impl JwtService {
         };
 
         let refresh_token = encode(
-            &Header::default(),
+            &header,
             &refresh_claims,
             &EncodingKey::from_secret(self.secret.as_bytes()),
         )
@@ -150,20 +198,41 @@ impl JwtService {
     }
 
     /// Validate and decode a token
+    /// 
+    /// Security measures:
+    /// - Explicit algorithm enforcement (only HS256 accepted)
+    /// - Issuer validation
+    /// - Audience validation
+    /// - Expiration validation
+    /// - Not-before validation
     #[instrument(skip(self, token))]
     pub fn validate_token(&self, token: &str) -> Result<Claims> {
-        let mut validation = Validation::default();
+        // Create validation with explicit algorithm to prevent algorithm confusion attacks
+        let mut validation = Validation::new(JWT_ALGORITHM);
+        
+        // Enforce issuer
         validation.set_issuer(&[&self.issuer]);
+        
+        // Enforce audience
+        validation.set_audience(&[&self.audience]);
+        
+        // Enforce time-based claims
         validation.validate_exp = true;
         validation.validate_nbf = true;
+        
+        // Reject tokens with 'none' algorithm (already handled by explicit algorithm, but extra safety)
+        validation.validate_aud = true;
 
         let token_data = decode::<Claims>(
             token,
             &DecodingKey::from_secret(self.secret.as_bytes()),
             &validation,
         )
-        .map_err(|e| SeparError::JwtError {
-            message: format!("Token validation failed: {}", e),
+        .map_err(|e| {
+            warn!(error = %e, "Token validation failed");
+            SeparError::JwtError {
+                message: format!("Token validation failed: {}", e),
+            }
         })?;
 
         debug!("Validated token for user {}", token_data.claims.sub);

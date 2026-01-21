@@ -44,6 +44,12 @@ impl SpiceDbAuthorizationService {
             SubjectType::User => "user",
             SubjectType::ServiceAccount => "service_account",
             SubjectType::Group => "group",
+            SubjectType::Platform => "platform",
+            SubjectType::Tenant => "tenant",
+            SubjectType::Workspace => "workspace",
+            SubjectType::Application => "application",
+            SubjectType::Role => "role",
+            SubjectType::Anonymous => "anonymous",
             SubjectType::Wildcard => "*",
         }
     }
@@ -53,8 +59,14 @@ impl SpiceDbAuthorizationService {
             "user" => SubjectType::User,
             "service_account" => SubjectType::ServiceAccount,
             "group" => SubjectType::Group,
+            "platform" => SubjectType::Platform,
+            "tenant" => SubjectType::Tenant,
+            "workspace" => SubjectType::Workspace,
+            "application" => SubjectType::Application,
+            "role" => SubjectType::Role,
+            "anonymous" => SubjectType::Anonymous,
             "*" => SubjectType::Wildcard,
-            _ => SubjectType::User,
+            _ => SubjectType::User, // Default fallback
         }
     }
 }

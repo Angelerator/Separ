@@ -1,7 +1,12 @@
-//! SpiceDB schema definition for Separ
+// Separ Authorization Schema for SpiceDB
+// Supports: Workspace-First, Tenant-Later Model
+//
+// Key concepts:
+// - Users can exist without tenants
+// - Users own workspaces directly
+// - Tenants are only created when domains are claimed
+// - After domain claim, tenant governance applies
 
-/// The complete Separ authorization schema for SpiceDB
-pub const YEKTA_SCHEMA: &str = r#"
 definition platform {
     relation admin: user | service_account
     relation member: user | service_account
@@ -15,6 +20,9 @@ definition tenant {
     relation owner: user | service_account
     relation admin: user | service_account | group#member
     relation member: user | service_account | group#member
+    
+    // Domain that was claimed for this tenant
+    // e.g., "acme.com" - all @acme.com users belong to this tenant
     
     permission manage = owner + admin + platform->admin
     permission view = owner + admin + member + platform->admin
@@ -149,4 +157,3 @@ definition yekta_resource {
     permission write = owner + editor + tenant->manage
     permission read = owner + editor + viewer + tenant->view
 }
-"#;

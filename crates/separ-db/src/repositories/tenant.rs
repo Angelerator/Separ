@@ -105,6 +105,7 @@ impl TenantRepository for PgTenantRepository {
                     metadata,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
+                    zed_token: None, // Loaded from SpiceDB if needed
                 }))
             }
             None => Ok(None),
@@ -153,6 +154,7 @@ impl TenantRepository for PgTenantRepository {
                     metadata,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
+                    zed_token: None, // Loaded from SpiceDB if needed
                 }))
             }
             None => Ok(None),
@@ -204,6 +206,7 @@ impl TenantRepository for PgTenantRepository {
                     metadata,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
+                    zed_token: None, // Loaded from SpiceDB if needed
                 }
             })
             .collect();
