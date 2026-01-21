@@ -457,43 +457,9 @@ async fn validate_password(
             .await
             .unwrap_or(None);
 
-    if let Some((user_id, display_name)) = user_exists {
-        // User exists in DB but has no password - check if they have platform access
-        let has_platform_access = state
-            .auth_service
-            .client()
-            .check_permission("platform", "main", "admin", "user", &user_id)
-            .await
-            .unwrap_or(false);
-
-        if has_platform_access {
-            // Platform admin without password - warn but allow for initial setup
-            warn!(
-                username = %username,
-                user_id = %user_id,
-                "Platform admin authenticated without password - please set a password"
-            );
-
-            return Ok(Json(ValidateResponse {
-                user_id,
-                principal_type: "user".to_string(),
-                tenant_id,
-                tenant_name: None,
-                display_name: Some(display_name),
-                email: Some(username.clone()),
-                groups: vec!["admins".to_string()],
-                permissions: vec![
-                    "read".to_string(),
-                    "write".to_string(),
-                    "query".to_string(),
-                    "admin".to_string(),
-                ],
-                expires_at: None,
-                attributes: None,
-            }));
-        }
-
-        // User exists but no password and no platform access - reject
+    if let Some((_user_id, _display_name)) = user_exists {
+        // SECURITY: User exists but has no password - always require password
+        // Even platform admins must have a password set
         warn!(username = %username, "User exists but has no password set");
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -505,31 +471,27 @@ async fn validate_password(
     }
 
     // Check if there are ANY users in the system (first-time setup)
+    // SECURITY: Even for first-time setup, we don't authenticate without proper credentials
+    // The admin must use the admin API to create the first user
     let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(&state.db_pool)
         .await
         .unwrap_or((0,));
 
     if user_count.0 == 0 {
-        // No users exist yet - allow super admin setup for first user
-        warn!("No users in system - allowing initial access for setup");
-        return Ok(Json(ValidateResponse {
-            user_id: username.clone(),
-            principal_type: "user".to_string(),
-            tenant_id,
-            tenant_name: None,
-            display_name: Some(username.clone()),
-            email: Some(username.clone()),
-            groups: vec!["admins".to_string()],
-            permissions: vec![
-                "read".to_string(),
-                "write".to_string(),
-                "query".to_string(),
-                "admin".to_string(),
-            ],
-            expires_at: None,
-            attributes: None,
-        }));
+        // No users exist - guide them to use admin API
+        warn!(
+            username = %username,
+            "No users in system - use admin API to create first user"
+        );
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(AuthError {
+                error: "no_users".to_string(),
+                message: "No users configured. Use the admin API to create the first user."
+                    .to_string(),
+            }),
+        ));
     }
 
     // User not found
@@ -906,40 +868,9 @@ async fn validate_password_internal(
             .await
             .unwrap_or(None);
 
-    if let Some((user_id, display_name)) = user_exists {
-        let has_platform_access = state
-            .auth_service
-            .client()
-            .check_permission("platform", "main", "admin", "user", &user_id)
-            .await
-            .unwrap_or(false);
-
-        if has_platform_access {
-            warn!(
-                username = %username,
-                user_id = %user_id,
-                "Platform admin token issued without password - please set a password"
-            );
-
-            return Ok(ValidateResponse {
-                user_id,
-                principal_type: "user".to_string(),
-                tenant_id,
-                tenant_name: None,
-                display_name: Some(display_name),
-                email: Some(username.clone()),
-                groups: vec!["admins".to_string()],
-                permissions: vec![
-                    "read".to_string(),
-                    "write".to_string(),
-                    "query".to_string(),
-                    "admin".to_string(),
-                ],
-                expires_at: None,
-                attributes: None,
-            });
-        }
-
+    if let Some((_user_id, _display_name)) = user_exists {
+        // SECURITY: User exists but has no password - always require password
+        // Even platform admins must have a password set
         warn!(username = %username, "User exists but has no password set");
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -951,31 +882,27 @@ async fn validate_password_internal(
     }
 
     // Check if there are ANY users in the system (first-time setup)
+    // SECURITY: Even for first-time setup, we don't issue tokens without proper setup
+    // The admin must use the /api/v1/auth/register endpoint first
     let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(&state.db_pool)
         .await
         .unwrap_or((0,));
 
     if user_count.0 == 0 {
-        // No users exist yet - allow super admin setup for first user
-        warn!("No users in system - allowing initial token for setup");
-        return Ok(ValidateResponse {
-            user_id: username.clone(),
-            principal_type: "user".to_string(),
-            tenant_id,
-            tenant_name: None,
-            display_name: Some(username.clone()),
-            email: Some(username.clone()),
-            groups: vec!["admins".to_string()],
-            permissions: vec![
-                "read".to_string(),
-                "write".to_string(),
-                "query".to_string(),
-                "admin".to_string(),
-            ],
-            expires_at: None,
-            attributes: None,
-        });
+        // No users exist - guide them to register first
+        warn!(
+            username = %username,
+            "No users in system - use /api/v1/auth/register to create first user"
+        );
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(AuthError {
+                error: "no_users".to_string(),
+                message: "No users configured. Use the admin API to create the first user."
+                    .to_string(),
+            }),
+        ));
     }
 
     warn!(username = %username, "User not found for token request");
