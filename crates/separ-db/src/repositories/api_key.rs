@@ -12,8 +12,8 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use separ_core::{
-    ApiKeyId, CreateApiKeyRequest, CreateApiKeyResponse, 
-    Result, SeparError, ServiceAccountId, TenantId, UserId,
+    ApiKeyId, CreateApiKeyRequest, CreateApiKeyResponse, Result, SeparError, ServiceAccountId,
+    TenantId, UserId,
 };
 
 /// Extended API Key for the repository (includes all fields)
@@ -75,10 +75,18 @@ pub trait ApiKeyRepository: Send + Sync {
     async fn get_by_id(&self, id: ApiKeyId) -> Result<Option<ApiKey>>;
 
     /// List API keys by tenant
-    async fn list_by_tenant(&self, tenant_id: TenantId, offset: u32, limit: u32) -> Result<Vec<ApiKey>>;
+    async fn list_by_tenant(
+        &self,
+        tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<ApiKey>>;
 
     /// List API keys by service account
-    async fn list_by_service_account(&self, service_account_id: ServiceAccountId) -> Result<Vec<ApiKey>>;
+    async fn list_by_service_account(
+        &self,
+        service_account_id: ServiceAccountId,
+    ) -> Result<Vec<ApiKey>>;
 
     /// Revoke an API key
     async fn revoke(&self, id: ApiKeyId, revoked_by: UserId) -> Result<()>;
@@ -125,37 +133,62 @@ impl PgApiKeyRepository {
     fn get_prefix(key: &str) -> String {
         key.chars().take(12).collect()
     }
-    
+
     /// Parse row into ApiKey
     fn row_to_api_key(row: &sqlx::postgres::PgRow) -> Result<ApiKey> {
         Ok(ApiKey {
-            id: ApiKeyId::from_uuid(row.try_get("id").map_err(|e| SeparError::database_error(e.to_string()))?),
-            key_prefix: row.try_get("key_prefix").map_err(|e| SeparError::database_error(e.to_string()))?,
-            key_hash: row.try_get("key_hash").map_err(|e| SeparError::database_error(e.to_string()))?,
-            name: row.try_get("name").map_err(|e| SeparError::database_error(e.to_string()))?,
-            description: row.try_get("description").map_err(|e| SeparError::database_error(e.to_string()))?,
-            service_account_id: row.try_get::<Option<Uuid>, _>("service_account_id")
+            id: ApiKeyId::from_uuid(
+                row.try_get("id")
+                    .map_err(|e| SeparError::database_error(e.to_string()))?,
+            ),
+            key_prefix: row
+                .try_get("key_prefix")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            key_hash: row
+                .try_get("key_hash")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            name: row
+                .try_get("name")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            description: row
+                .try_get("description")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            service_account_id: row
+                .try_get::<Option<Uuid>, _>("service_account_id")
                 .map_err(|e| SeparError::database_error(e.to_string()))?
                 .map(ServiceAccountId::from_uuid),
-            created_by: row.try_get::<Option<Uuid>, _>("created_by")
+            created_by: row
+                .try_get::<Option<Uuid>, _>("created_by")
                 .map_err(|e| SeparError::database_error(e.to_string()))?
                 .map(UserId::from_uuid),
-            tenant_id: row.try_get::<Option<Uuid>, _>("tenant_id")
+            tenant_id: row
+                .try_get::<Option<Uuid>, _>("tenant_id")
                 .map_err(|e| SeparError::database_error(e.to_string()))?
                 .map(TenantId::from_uuid),
-            scopes: row.try_get::<Vec<String>, _>("scopes")
-                .unwrap_or_default(),
-            rate_limit_per_minute: row.try_get::<Option<i32>, _>("rate_limit_per_minute")
+            scopes: row.try_get::<Vec<String>, _>("scopes").unwrap_or_default(),
+            rate_limit_per_minute: row
+                .try_get::<Option<i32>, _>("rate_limit_per_minute")
                 .map_err(|e| SeparError::database_error(e.to_string()))?
                 .unwrap_or(1000),
-            expires_at: row.try_get("expires_at").map_err(|e| SeparError::database_error(e.to_string()))?,
-            last_used_at: row.try_get("last_used_at").map_err(|e| SeparError::database_error(e.to_string()))?,
-            revoked_at: row.try_get("revoked_at").map_err(|e| SeparError::database_error(e.to_string()))?,
-            revoked_by: row.try_get::<Option<Uuid>, _>("revoked_by")
+            expires_at: row
+                .try_get("expires_at")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            last_used_at: row
+                .try_get("last_used_at")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            revoked_at: row
+                .try_get("revoked_at")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            revoked_by: row
+                .try_get::<Option<Uuid>, _>("revoked_by")
                 .map_err(|e| SeparError::database_error(e.to_string()))?
                 .map(UserId::from_uuid),
-            created_at: row.try_get("created_at").map_err(|e| SeparError::database_error(e.to_string()))?,
-            updated_at: row.try_get("updated_at").map_err(|e| SeparError::database_error(e.to_string()))?,
+            created_at: row
+                .try_get("created_at")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
+            updated_at: row
+                .try_get("updated_at")
+                .map_err(|e| SeparError::database_error(e.to_string()))?,
         })
     }
 }
@@ -173,9 +206,9 @@ impl ApiKeyRepository for PgApiKeyRepository {
         let key_prefix = Self::get_prefix(&key);
         let key_hash = Self::hash_key(&key);
 
-        let expires_at = request.expires_in_days.map(|days| {
-            Utc::now() + Duration::days(days as i64)
-        });
+        let expires_at = request
+            .expires_in_days
+            .map(|days| Utc::now() + Duration::days(days as i64));
 
         let rate_limit = request.rate_limit_per_minute.unwrap_or(1000);
 
@@ -275,7 +308,12 @@ impl ApiKeyRepository for PgApiKeyRepository {
         }
     }
 
-    async fn list_by_tenant(&self, tenant_id: TenantId, offset: u32, limit: u32) -> Result<Vec<ApiKey>> {
+    async fn list_by_tenant(
+        &self,
+        tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<ApiKey>> {
         let rows = sqlx::query(
             r#"
             SELECT 
@@ -297,12 +335,13 @@ impl ApiKeyRepository for PgApiKeyRepository {
         .await
         .map_err(|e| SeparError::database_error(e.to_string()))?;
 
-        rows.iter()
-            .map(Self::row_to_api_key)
-            .collect()
+        rows.iter().map(Self::row_to_api_key).collect()
     }
 
-    async fn list_by_service_account(&self, service_account_id: ServiceAccountId) -> Result<Vec<ApiKey>> {
+    async fn list_by_service_account(
+        &self,
+        service_account_id: ServiceAccountId,
+    ) -> Result<Vec<ApiKey>> {
         let rows = sqlx::query(
             r#"
             SELECT 
@@ -321,9 +360,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
         .await
         .map_err(|e| SeparError::database_error(e.to_string()))?;
 
-        rows.iter()
-            .map(Self::row_to_api_key)
-            .collect()
+        rows.iter().map(Self::row_to_api_key).collect()
     }
 
     async fn revoke(&self, id: ApiKeyId, revoked_by: UserId) -> Result<()> {

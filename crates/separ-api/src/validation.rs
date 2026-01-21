@@ -19,14 +19,11 @@ pub const MIN_PASSWORD_LENGTH: usize = 8;
 pub const MAX_PASSWORD_LENGTH: usize = 128;
 
 /// Email validation regex (RFC 5322 simplified)
-static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-});
+static EMAIL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
 
 /// Slug validation regex (lowercase alphanumeric + hyphens)
-static SLUG_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap()
-});
+static SLUG_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap());
 
 /// UUID validation regex
 static UUID_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -106,18 +103,21 @@ impl Validator {
         if value.len() < MIN_PASSWORD_LENGTH {
             self.error(
                 field,
-                &format!("Password must be at least {} characters", MIN_PASSWORD_LENGTH),
+                &format!(
+                    "Password must be at least {} characters",
+                    MIN_PASSWORD_LENGTH
+                ),
                 "too_short",
             );
         } else if value.len() > MAX_PASSWORD_LENGTH {
             self.error(field, "Password is too long", "too_long");
         }
-        
+
         // Check for basic complexity
         let has_uppercase = value.chars().any(|c| c.is_uppercase());
         let has_lowercase = value.chars().any(|c| c.is_lowercase());
         let has_digit = value.chars().any(|c| c.is_ascii_digit());
-        
+
         if !has_uppercase || !has_lowercase || !has_digit {
             self.error(
                 field,
@@ -125,7 +125,7 @@ impl Validator {
                 "weak_password",
             );
         }
-        
+
         self
     }
 
@@ -144,10 +144,8 @@ impl Validator {
     /// Validate optional name
     pub fn name_optional(&mut self, field: &str, value: Option<&str>) -> &mut Self {
         if let Some(v) = value {
-            if !v.is_empty() {
-                if v.len() > MAX_NAME_LENGTH {
-                    self.error(field, "Name is too long", "too_long");
-                }
+            if !v.is_empty() && v.len() > MAX_NAME_LENGTH {
+                self.error(field, "Name is too long", "too_long");
             }
         }
         self
@@ -225,15 +223,15 @@ pub fn sanitize_for_log(input: &str) -> String {
     if input.len() <= 4 {
         "*".repeat(input.len())
     } else {
-        format!("{}***{}", &input[..2], &input[input.len()-2..])
+        format!("{}***{}", &input[..2], &input[input.len() - 2..])
     }
 }
 
 /// Check if a string contains potentially dangerous characters
 pub fn is_safe_string(input: &str) -> bool {
-    !input.chars().any(|c| {
-        c == '<' || c == '>' || c == '\'' || c == '"' || c == '\\' || c == '\0'
-    })
+    !input
+        .chars()
+        .any(|c| c == '<' || c == '>' || c == '\'' || c == '"' || c == '\\' || c == '\0')
 }
 
 #[cfg(test)]

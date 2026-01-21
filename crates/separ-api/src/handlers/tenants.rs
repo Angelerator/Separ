@@ -415,9 +415,9 @@ pub struct DomainUserResponse {
 }
 
 /// Claim a domain and assign a tenant owner
-/// 
+///
 /// POST /api/v1/admin/domains/claim
-/// 
+///
 /// Platform admin uses this to:
 /// 1. Create a tenant for a domain
 /// 2. Assign a user as the tenant owner
@@ -427,30 +427,29 @@ pub async fn claim_domain(
     Json(request): Json<ClaimDomainRequest>,
 ) -> Result<Json<ClaimDomainResponse>, (StatusCode, Json<ApiResponse<()>>)> {
     let domain = request.domain.to_lowercase();
-    
+
     info!(domain = %domain, owner = %request.owner_user_id, "Claiming domain");
 
     // Check if domain is a public email domain (cannot be claimed)
-    let is_public: Option<(String,)> = sqlx::query_as(
-        "SELECT domain FROM public_email_domains WHERE domain = $1"
-    )
-    .bind(&domain)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse {
-                success: false,
-                data: None,
-                error: Some(ApiError {
-                    code: "DB_ERROR".to_string(),
-                    message: e.to_string(),
-                    details: None,
-                }),
-            }),
-        )
-    })?;
+    let is_public: Option<(String,)> =
+        sqlx::query_as("SELECT domain FROM public_email_domains WHERE domain = $1")
+            .bind(&domain)
+            .fetch_optional(&state.db_pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse {
+                        success: false,
+                        data: None,
+                        error: Some(ApiError {
+                            code: "DB_ERROR".to_string(),
+                            message: e.to_string(),
+                            details: None,
+                        }),
+                    }),
+                )
+            })?;
 
     if is_public.is_some() {
         return Err((
@@ -468,26 +467,25 @@ pub async fn claim_domain(
     }
 
     // Check if domain is already claimed
-    let existing_tenant: Option<(uuid::Uuid,)> = sqlx::query_as(
-        "SELECT id FROM tenants WHERE domain = $1"
-    )
-    .bind(&domain)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse {
-                success: false,
-                data: None,
-                error: Some(ApiError {
-                    code: "DB_ERROR".to_string(),
-                    message: e.to_string(),
-                    details: None,
-                }),
-            }),
-        )
-    })?;
+    let existing_tenant: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT id FROM tenants WHERE domain = $1")
+            .bind(&domain)
+            .fetch_optional(&state.db_pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse {
+                        success: false,
+                        data: None,
+                        error: Some(ApiError {
+                            code: "DB_ERROR".to_string(),
+                            message: e.to_string(),
+                            details: None,
+                        }),
+                    }),
+                )
+            })?;
 
     if existing_tenant.is_some() {
         return Err((
@@ -520,41 +518,41 @@ pub async fn claim_domain(
         )
     })?;
 
-    let owner: Option<(String,)> = sqlx::query_as(
-        "SELECT email FROM users WHERE id = $1"
-    )
-    .bind(owner_uuid)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse {
-                success: false,
-                data: None,
-                error: Some(ApiError {
-                    code: "DB_ERROR".to_string(),
-                    message: e.to_string(),
-                    details: None,
+    let owner: Option<(String,)> = sqlx::query_as("SELECT email FROM users WHERE id = $1")
+        .bind(owner_uuid)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "DB_ERROR".to_string(),
+                        message: e.to_string(),
+                        details: None,
+                    }),
                 }),
-            }),
-        )
-    })?;
+            )
+        })?;
 
-    let owner_email = owner.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ApiResponse {
-                success: false,
-                data: None,
-                error: Some(ApiError {
-                    code: "USER_NOT_FOUND".to_string(),
-                    message: "Owner user not found".to_string(),
-                    details: None,
+    let owner_email = owner
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "USER_NOT_FOUND".to_string(),
+                        message: "Owner user not found".to_string(),
+                        details: None,
+                    }),
                 }),
-            }),
-        )
-    })?.0;
+            )
+        })?
+        .0;
 
     // Verify owner email matches domain
     let owner_domain = owner_email.split('@').nth(1).unwrap_or("");
@@ -578,7 +576,7 @@ pub async fn claim_domain(
 
     // Get or create default platform
     let platform_id: uuid::Uuid = sqlx::query_as::<_, (uuid::Uuid,)>(
-        "SELECT id FROM platforms WHERE name = 'default' LIMIT 1"
+        "SELECT id FROM platforms WHERE name = 'default' LIMIT 1",
     )
     .fetch_optional(&state.db_pool)
     .await
@@ -602,7 +600,7 @@ pub async fn claim_domain(
     // Create tenant for domain
     let tenant_id = uuid::Uuid::new_v4();
     let tenant_name = request.tenant_name.unwrap_or_else(|| domain.clone());
-    
+
     let create_result = sqlx::query(
         r#"
         INSERT INTO tenants (id, platform_id, name, slug, domain, owner_user_id, status, settings, metadata, claimed_at, created_at, updated_at)
@@ -665,12 +663,18 @@ pub async fn claim_domain(
 
     // Create SpiceDB relationships
     let tenant_id_str = tenant_id.to_string();
-    
+
     // Owner relationship
     let _ = state
         .auth_service
         .client()
-        .write_relationship("tenant", &tenant_id_str, "owner", "user", &request.owner_user_id)
+        .write_relationship(
+            "tenant",
+            &tenant_id_str,
+            "owner",
+            "user",
+            &request.owner_user_id,
+        )
         .await;
 
     // Link tenant to platform
@@ -699,7 +703,7 @@ pub async fn claim_domain(
 }
 
 /// List domains with registered users but no tenant
-/// 
+///
 /// GET /api/v1/admin/domains/unclaimed
 pub async fn list_unclaimed_domains(
     State(state): State<AppState>,
@@ -744,14 +748,14 @@ pub async fn list_unclaimed_domains(
 }
 
 /// Get users for a specific domain
-/// 
+///
 /// GET /api/v1/admin/domains/{domain}/users
 pub async fn get_domain_users(
     State(state): State<AppState>,
     Path(domain): Path<String>,
 ) -> Result<Json<Vec<DomainUserResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
     let domain = domain.to_lowercase();
-    
+
     let users: Vec<(uuid::Uuid, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         r#"
         SELECT id, email, display_name, created_at
@@ -816,9 +820,9 @@ pub struct CreatePlatformAdminResponse {
 }
 
 /// Create or promote a user to platform admin (super admin)
-/// 
+///
 /// POST /api/v1/admin/platform-admins
-/// 
+///
 /// This endpoint creates a new platform admin or promotes an existing user.
 /// Requires admin API key authentication.
 pub async fn create_platform_admin(
@@ -1043,7 +1047,7 @@ pub async fn create_platform_admin(
 }
 
 /// List all platform admins
-/// 
+///
 /// GET /api/v1/admin/platform-admins
 pub async fn list_platform_admins(
     State(state): State<AppState>,

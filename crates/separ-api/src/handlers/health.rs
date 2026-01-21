@@ -63,13 +63,11 @@ fn get_uptime_seconds() -> u64 {
 }
 
 /// Comprehensive health check
-/// 
+///
 /// Checks all dependencies:
 /// - SpiceDB: Can read schema
 /// - Database: Can execute query
-pub async fn health_check(
-    State(state): State<AppState>,
-) -> (StatusCode, Json<HealthResponse>) {
+pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     let mut components = Vec::new();
     let mut overall_status = HealthStatus::Healthy;
 
@@ -84,7 +82,8 @@ pub async fn health_check(
     let db_health = check_database(&state).await;
     if db_health.status == HealthStatus::Unhealthy {
         overall_status = HealthStatus::Unhealthy;
-    } else if db_health.status == HealthStatus::Degraded && overall_status == HealthStatus::Healthy {
+    } else if db_health.status == HealthStatus::Degraded && overall_status == HealthStatus::Healthy
+    {
         overall_status = HealthStatus::Degraded;
     }
     components.push(db_health);
@@ -112,11 +111,8 @@ pub async fn health_check(
 /// Check SpiceDB health
 async fn check_spicedb(state: &AppState) -> ComponentHealth {
     let start = Instant::now();
-    
-    match tokio::time::timeout(
-        Duration::from_secs(5),
-        state.spicedb_client.health_check()
-    ).await {
+
+    match tokio::time::timeout(Duration::from_secs(5), state.spicedb_client.health_check()).await {
         Ok(Ok(true)) => {
             debug!("SpiceDB health check passed");
             ComponentHealth {
@@ -159,13 +155,14 @@ async fn check_spicedb(state: &AppState) -> ComponentHealth {
 /// Check database health
 async fn check_database(state: &AppState) -> ComponentHealth {
     let start = Instant::now();
-    
+
     // Simple query to check database connectivity
     match tokio::time::timeout(
         Duration::from_secs(5),
-        sqlx::query("SELECT 1")
-            .fetch_one(&state.db_pool)
-    ).await {
+        sqlx::query("SELECT 1").fetch_one(&state.db_pool),
+    )
+    .await
+    {
         Ok(Ok(_)) => {
             debug!("Database health check passed");
             ComponentHealth {
@@ -197,7 +194,7 @@ async fn check_database(state: &AppState) -> ComponentHealth {
 }
 
 /// Kubernetes liveness probe
-/// 
+///
 /// Returns 200 if the process is alive.
 /// This should NOT check external dependencies - it's just "is the process running?"
 pub async fn liveness() -> (StatusCode, Json<SimpleHealthResponse>) {
@@ -205,41 +202,37 @@ pub async fn liveness() -> (StatusCode, Json<SimpleHealthResponse>) {
         StatusCode::OK,
         Json(SimpleHealthResponse {
             status: "alive".to_string(),
-        })
+        }),
     )
 }
 
 /// Kubernetes readiness probe
-/// 
+///
 /// Returns 200 if the service can handle traffic.
 /// Checks critical dependencies (database, SpiceDB).
-pub async fn readiness(
-    State(state): State<AppState>,
-) -> (StatusCode, Json<SimpleHealthResponse>) {
+pub async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<SimpleHealthResponse>) {
     // Check SpiceDB (critical for authorization)
-    let spicedb_ok = match tokio::time::timeout(
-        Duration::from_secs(2),
-        state.spicedb_client.health_check()
-    ).await {
-        Ok(Ok(true)) => true,
-        _ => false,
-    };
+    let spicedb_ok = matches!(
+        tokio::time::timeout(Duration::from_secs(2), state.spicedb_client.health_check()).await,
+        Ok(Ok(true))
+    );
 
     // Check database (critical for data)
-    let db_ok = match tokio::time::timeout(
-        Duration::from_secs(2),
-        sqlx::query("SELECT 1").fetch_one(&state.db_pool)
-    ).await {
-        Ok(Ok(_)) => true,
-        _ => false,
-    };
+    let db_ok = matches!(
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            sqlx::query("SELECT 1").fetch_one(&state.db_pool)
+        )
+        .await,
+        Ok(Ok(_))
+    );
 
     if spicedb_ok && db_ok {
         (
             StatusCode::OK,
             Json(SimpleHealthResponse {
                 status: "ready".to_string(),
-            })
+            }),
         )
     } else {
         let mut issues = Vec::new();
@@ -249,12 +242,12 @@ pub async fn readiness(
         if !db_ok {
             issues.push("database");
         }
-        
+
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(SimpleHealthResponse {
                 status: format!("not ready: {} unavailable", issues.join(", ")),
-            })
+            }),
         )
     }
 }

@@ -21,7 +21,7 @@ use crate::client::SpiceDbClient;
 // =============================================================================
 
 /// SpiceDB consistency mode
-/// 
+///
 /// Based on SpiceDB documentation:
 /// - MinimizeLatency: Uses cached results aggressively (seconds of staleness acceptable)
 /// - AtLeastAsFresh: Result is at least as fresh as the provided ZedToken
@@ -32,11 +32,11 @@ pub enum ConsistencyMode {
     /// Best for: UI rendering, non-critical checks, high-volume reads
     #[default]
     MinimizeLatency,
-    
+
     /// Result must be at least as fresh as the provided ZedToken
     /// Best for: After write operations, ensuring visibility of recent changes
     AtLeastAsFresh,
-    
+
     /// Always use latest data, bypassing all caches
     /// Best for: Admin operations, permission changes, critical security checks
     FullyConsistent,
@@ -76,6 +76,7 @@ impl PermissionCacheKey {
 
 /// Cached permission result
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct CachedPermission {
     allowed: bool,
     zed_token: Option<String>,
@@ -111,7 +112,7 @@ impl Default for CachedClientConfig {
 }
 
 /// Cached SpiceDB client with consistency support
-/// 
+///
 /// Wraps the base SpiceDB client and adds:
 /// - Permission caching with configurable TTL
 /// - ZedToken tracking for cache invalidation
@@ -182,10 +183,11 @@ impl CachedSpiceDbClient {
     }
 
     /// Check a permission with caching
-    /// 
+    ///
     /// # Arguments
     /// * `consistency` - Consistency mode to use
     /// * `zed_token` - Optional ZedToken for at_least_as_fresh consistency
+    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, zed_token))]
     pub async fn check_permission(
         &self,
@@ -200,13 +202,16 @@ impl CachedSpiceDbClient {
         // For fully consistent mode, bypass cache entirely
         if consistency == ConsistencyMode::FullyConsistent {
             debug!("Bypassing cache for fully_consistent check");
-            return self.inner.check_permission(
-                resource_type,
-                resource_id,
-                permission,
-                subject_type,
-                subject_id,
-            ).await;
+            return self
+                .inner
+                .check_permission(
+                    resource_type,
+                    resource_id,
+                    permission,
+                    subject_type,
+                    subject_id,
+                )
+                .await;
         }
 
         let cache_key = PermissionCacheKey::new(
@@ -225,7 +230,9 @@ impl CachedSpiceDbClient {
                     if let Some(ref cached_token) = cached.zed_token {
                         // Compare tokens (lexicographic comparison works for SpiceDB tokens)
                         if cached_token.as_str() >= required_token {
-                            self.metrics.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            self.metrics
+                                .hits
+                                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             debug!(
                                 resource = %format!("{}:{}", resource_type, resource_id),
                                 permission = %permission,
@@ -239,7 +246,9 @@ impl CachedSpiceDbClient {
                 }
             } else {
                 // MinimizeLatency - use cache if available
-                self.metrics.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.metrics
+                    .hits
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 debug!(
                     resource = %format!("{}:{}", resource_type, resource_id),
                     permission = %permission,
@@ -251,20 +260,25 @@ impl CachedSpiceDbClient {
         }
 
         // Cache miss - query SpiceDB
-        self.metrics.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics
+            .misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         debug!(
             resource = %format!("{}:{}", resource_type, resource_id),
             permission = %permission,
             "Permission check cache miss"
         );
 
-        let allowed = self.inner.check_permission(
-            resource_type,
-            resource_id,
-            permission,
-            subject_type,
-            subject_id,
-        ).await?;
+        let allowed = self
+            .inner
+            .check_permission(
+                resource_type,
+                resource_id,
+                permission,
+                subject_type,
+                subject_id,
+            )
+            .await?;
 
         // Cache the result
         let cached_result = CachedPermission {
@@ -287,13 +301,16 @@ impl CachedSpiceDbClient {
         subject_type: &str,
         subject_id: &str,
     ) -> Result<String> {
-        let token = self.inner.write_relationship(
-            resource_type,
-            resource_id,
-            relation,
-            subject_type,
-            subject_id,
-        ).await?;
+        let token = self
+            .inner
+            .write_relationship(
+                resource_type,
+                resource_id,
+                relation,
+                subject_type,
+                subject_id,
+            )
+            .await?;
 
         // Update latest ZedToken
         {
@@ -303,7 +320,8 @@ impl CachedSpiceDbClient {
 
         // Invalidate related cache entries if configured
         if self.config.invalidate_on_write {
-            self.invalidate_for_resource(resource_type, resource_id).await;
+            self.invalidate_for_resource(resource_type, resource_id)
+                .await;
             self.invalidate_for_subject(subject_type, subject_id).await;
         }
 
@@ -320,13 +338,16 @@ impl CachedSpiceDbClient {
         subject_type: &str,
         subject_id: &str,
     ) -> Result<String> {
-        let token = self.inner.delete_relationship(
-            resource_type,
-            resource_id,
-            relation,
-            subject_type,
-            subject_id,
-        ).await?;
+        let token = self
+            .inner
+            .delete_relationship(
+                resource_type,
+                resource_id,
+                relation,
+                subject_type,
+                subject_id,
+            )
+            .await?;
 
         // Update latest ZedToken
         {
@@ -336,7 +357,8 @@ impl CachedSpiceDbClient {
 
         // Invalidate related cache entries
         if self.config.invalidate_on_write {
-            self.invalidate_for_resource(resource_type, resource_id).await;
+            self.invalidate_for_resource(resource_type, resource_id)
+                .await;
             self.invalidate_for_subject(subject_type, subject_id).await;
         }
 
@@ -344,7 +366,7 @@ impl CachedSpiceDbClient {
     }
 
     /// Invalidate all cache entries for a specific resource
-    /// 
+    ///
     /// Note: Moka doesn't support efficient partial invalidation by predicate,
     /// so we invalidate all entries when relationships change. This is conservative
     /// but correct. For production, consider more targeted invalidation.
@@ -352,7 +374,9 @@ impl CachedSpiceDbClient {
         // Conservative approach: invalidate all entries
         // In production, you might want to track keys by resource for targeted invalidation
         self.permission_cache.invalidate_all();
-        self.metrics.invalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics
+            .invalidations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         debug!("Invalidated permission cache due to resource change");
     }
 
@@ -360,14 +384,18 @@ impl CachedSpiceDbClient {
     async fn invalidate_for_subject(&self, _subject_type: &str, _subject_id: &str) {
         // Conservative approach: invalidate all entries
         self.permission_cache.invalidate_all();
-        self.metrics.invalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics
+            .invalidations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         debug!("Invalidated permission cache due to subject change");
     }
 
     /// Invalidate entire cache
     pub async fn invalidate_all(&self) {
         self.permission_cache.invalidate_all();
-        self.metrics.invalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics
+            .invalidations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         info!("Invalidated entire permission cache");
     }
 
@@ -376,19 +404,19 @@ impl CachedSpiceDbClient {
     // =============================================================================
 
     /// Check permission with resource's stored ZedToken
-    /// 
+    ///
     /// This is the recommended pattern for post-write consistency:
     /// 1. After modifying relationships, store the returned ZedToken on the resource
     /// 2. Use this method for subsequent permission checks on that resource
     /// 3. Ensures read-after-write consistency without fully_consistent overhead
-    /// 
+    ///
     /// # Example
     /// ```ignore
     /// // After granting permission, save the token
     /// let token = client.write_relationship(...).await?;
     /// resource.zed_token = Some(token);
     /// save_resource(&resource).await?;
-    /// 
+    ///
     /// // Later, check permission with the resource's token
     /// let allowed = client.check_permission_for_resource(
     ///     &resource.zed_token,
@@ -420,11 +448,12 @@ impl CachedSpiceDbClient {
             subject_id,
             consistency,
             token,
-        ).await
+        )
+        .await
     }
 
     /// Write relationship and return the ZedToken for storage
-    /// 
+    ///
     /// Use this when you want to track the token for a specific resource.
     /// The returned token should be stored on the resource for future
     /// `at_least_as_fresh` consistency checks.
@@ -437,11 +466,18 @@ impl CachedSpiceDbClient {
         subject_type: &str,
         subject_id: &str,
     ) -> Result<String> {
-        self.write_relationship(resource_type, resource_id, relation, subject_type, subject_id).await
+        self.write_relationship(
+            resource_type,
+            resource_id,
+            relation,
+            subject_type,
+            subject_id,
+        )
+        .await
     }
 
     /// Delete relationship and return the ZedToken for storage
-    /// 
+    ///
     /// Use this when you want to track the token for a specific resource.
     /// The returned token should be stored on the resource for future
     /// `at_least_as_fresh` consistency checks.
@@ -454,7 +490,14 @@ impl CachedSpiceDbClient {
         subject_type: &str,
         subject_id: &str,
     ) -> Result<String> {
-        self.delete_relationship(resource_type, resource_id, relation, subject_type, subject_id).await
+        self.delete_relationship(
+            resource_type,
+            resource_id,
+            relation,
+            subject_type,
+            subject_id,
+        )
+        .await
     }
 
     // =============================================================================
@@ -464,16 +507,16 @@ impl CachedSpiceDbClient {
     /// Write schema (clears all caches)
     pub async fn write_schema(&self, schema: &str) -> Result<String> {
         let token = self.inner.write_schema(schema).await?;
-        
+
         // Schema change invalidates everything
         self.invalidate_all().await;
-        
+
         // Update ZedToken
         {
             let mut latest = self.latest_zed_token.write().await;
             *latest = Some(token.clone());
         }
-        
+
         Ok(token)
     }
 
@@ -495,7 +538,9 @@ impl CachedSpiceDbClient {
         subject_type: &str,
         subject_id: &str,
     ) -> Result<Vec<String>> {
-        self.inner.lookup_resources(resource_type, permission, subject_type, subject_id).await
+        self.inner
+            .lookup_resources(resource_type, permission, subject_type, subject_id)
+            .await
     }
 
     /// Lookup subjects (not cached - results can be large)
@@ -506,7 +551,9 @@ impl CachedSpiceDbClient {
         permission: &str,
         subject_type: &str,
     ) -> Result<Vec<String>> {
-        self.inner.lookup_subjects(resource_type, resource_id, permission, subject_type).await
+        self.inner
+            .lookup_subjects(resource_type, resource_id, permission, subject_type)
+            .await
     }
 
     /// Read relationships (not cached - typically for admin/debugging)
@@ -519,13 +566,15 @@ impl CachedSpiceDbClient {
         subject_type: Option<&str>,
         subject_id: Option<&str>,
     ) -> Result<Vec<(String, String, String, String, String, Option<String>)>> {
-        self.inner.read_relationships(
-            resource_type,
-            resource_id,
-            relation,
-            subject_type,
-            subject_id,
-        ).await
+        self.inner
+            .read_relationships(
+                resource_type,
+                resource_id,
+                relation,
+                subject_type,
+                subject_id,
+            )
+            .await
     }
 }
 
@@ -545,7 +594,10 @@ impl std::fmt::Debug for CachedSpiceDbClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CachedSpiceDbClient")
             .field("cache_size", &self.permission_cache.entry_count())
-            .field("hit_rate", &format!("{:.1}%", self.metrics.hit_rate() * 100.0))
+            .field(
+                "hit_rate",
+                &format!("{:.1}%", self.metrics.hit_rate() * 100.0),
+            )
             .finish()
     }
 }
@@ -569,9 +621,13 @@ mod tests {
         let metrics = CacheMetrics::default();
         assert_eq!(metrics.hit_rate(), 0.0);
 
-        metrics.hits.fetch_add(3, std::sync::atomic::Ordering::Relaxed);
-        metrics.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        
+        metrics
+            .hits
+            .fetch_add(3, std::sync::atomic::Ordering::Relaxed);
+        metrics
+            .misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         assert_eq!(metrics.hit_rate(), 0.75);
     }
 }

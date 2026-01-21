@@ -113,16 +113,17 @@ pub struct WorkspaceMemberResponse {
 // ============================================================================
 
 /// Create a new workspace
-/// 
+///
 /// POST /api/v1/workspaces
-/// 
+///
 /// Creates a new workspace owned by the authenticated user.
 /// Requires: user_id header (from auth middleware)
 pub async fn create_workspace(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Json(request): Json<CreateWorkspaceRequest>,
-) -> Result<(StatusCode, Json<ApiResponse<WorkspaceResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<(StatusCode, Json<ApiResponse<WorkspaceResponse>>), (StatusCode, Json<ApiResponse<()>>)>
+{
     // Get authenticated user from header
     let user_id = headers
         .get("x-user-id")
@@ -143,9 +144,10 @@ pub async fn create_workspace(
 
     let workspace_id = uuid::Uuid::new_v4();
     let workspace_id_str = workspace_id.to_string();
-    
+
     // Generate slug from name
-    let slug = request.name
+    let slug = request
+        .name
         .to_lowercase()
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == ' ')
@@ -153,7 +155,7 @@ pub async fn create_workspace(
         .split_whitespace()
         .collect::<Vec<_>>()
         .join("-");
-    
+
     let slug = format!("{}-{}", slug, &workspace_id_str[..8]);
 
     info!(
@@ -256,7 +258,7 @@ pub async fn create_workspace(
 }
 
 /// Get a workspace by ID
-/// 
+///
 /// GET /api/v1/workspaces/:id
 pub async fn get_workspace(
     State(state): State<AppState>,
@@ -276,7 +278,7 @@ pub async fn get_workspace(
         )
     })?;
 
-    let workspace: Option<(uuid::Uuid, String, String, Option<String>, String, Option<uuid::Uuid>, Option<uuid::Uuid>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> = 
+    let workspace: Option<(uuid::Uuid, String, String, Option<String>, String, Option<uuid::Uuid>, Option<uuid::Uuid>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> =
         sqlx::query_as(
             r#"
             SELECT id, name, slug, description, workspace_type, owner_user_id, tenant_id, created_at, updated_at
@@ -302,23 +304,31 @@ pub async fn get_workspace(
         })?;
 
     match workspace {
-        Some((id, name, slug, description, workspace_type, owner_user_id, tenant_id, created_at, updated_at)) => {
-            Ok(Json(ApiResponse {
-                success: true,
-                data: Some(WorkspaceResponse {
-                    id: id.to_string(),
-                    name,
-                    slug,
-                    description,
-                    workspace_type,
-                    owner_user_id: owner_user_id.map(|u| u.to_string()),
-                    tenant_id: tenant_id.map(|t| t.to_string()),
-                    created_at: created_at.to_rfc3339(),
-                    updated_at: updated_at.to_rfc3339(),
-                }),
-                error: None,
-            }))
-        }
+        Some((
+            id,
+            name,
+            slug,
+            description,
+            workspace_type,
+            owner_user_id,
+            tenant_id,
+            created_at,
+            updated_at,
+        )) => Ok(Json(ApiResponse {
+            success: true,
+            data: Some(WorkspaceResponse {
+                id: id.to_string(),
+                name,
+                slug,
+                description,
+                workspace_type,
+                owner_user_id: owner_user_id.map(|u| u.to_string()),
+                tenant_id: tenant_id.map(|t| t.to_string()),
+                created_at: created_at.to_rfc3339(),
+                updated_at: updated_at.to_rfc3339(),
+            }),
+            error: None,
+        })),
         None => Err((
             StatusCode::NOT_FOUND,
             Json(ApiResponse {
@@ -334,9 +344,9 @@ pub async fn get_workspace(
 }
 
 /// List workspaces for authenticated user
-/// 
+///
 /// GET /api/v1/workspaces
-/// 
+///
 /// Returns workspaces where user is a member (any role)
 pub async fn list_workspaces(
     State(state): State<AppState>,
@@ -377,7 +387,7 @@ pub async fn list_workspaces(
     let limit = query.limit.min(100);
     let offset = query.offset;
 
-    let workspaces: Vec<(uuid::Uuid, String, String, Option<String>, String, Option<uuid::Uuid>, Option<uuid::Uuid>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> = 
+    let workspaces: Vec<(uuid::Uuid, String, String, Option<String>, String, Option<uuid::Uuid>, Option<uuid::Uuid>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> =
         sqlx::query_as(
             r#"
             SELECT w.id, w.name, w.slug, w.description, w.workspace_type, w.owner_user_id, w.tenant_id, w.created_at, w.updated_at
@@ -409,19 +419,31 @@ pub async fn list_workspaces(
 
     let items: Vec<WorkspaceResponse> = workspaces
         .into_iter()
-        .map(|(id, name, slug, description, workspace_type, owner_user_id, tenant_id, created_at, updated_at)| {
-            WorkspaceResponse {
-                id: id.to_string(),
+        .map(
+            |(
+                id,
                 name,
                 slug,
                 description,
                 workspace_type,
-                owner_user_id: owner_user_id.map(|u| u.to_string()),
-                tenant_id: tenant_id.map(|t| t.to_string()),
-                created_at: created_at.to_rfc3339(),
-                updated_at: updated_at.to_rfc3339(),
-            }
-        })
+                owner_user_id,
+                tenant_id,
+                created_at,
+                updated_at,
+            )| {
+                WorkspaceResponse {
+                    id: id.to_string(),
+                    name,
+                    slug,
+                    description,
+                    workspace_type,
+                    owner_user_id: owner_user_id.map(|u| u.to_string()),
+                    tenant_id: tenant_id.map(|t| t.to_string()),
+                    created_at: created_at.to_rfc3339(),
+                    updated_at: updated_at.to_rfc3339(),
+                }
+            },
+        )
         .collect();
 
     let has_more = items.len() as u32 == limit;
@@ -436,7 +458,7 @@ pub async fn list_workspaces(
 }
 
 /// Update a workspace
-/// 
+///
 /// PUT /api/v1/workspaces/:id
 pub async fn update_workspace(
     State(state): State<AppState>,
@@ -459,12 +481,18 @@ pub async fn update_workspace(
 
     // Build dynamic update query
     let mut set_clauses = vec!["updated_at = NOW()".to_string()];
-    
+
     if request.name.is_some() {
-        set_clauses.push(format!("name = '{}'", request.name.as_ref().unwrap().replace('\'', "''")));
+        set_clauses.push(format!(
+            "name = '{}'",
+            request.name.as_ref().unwrap().replace('\'', "''")
+        ));
     }
     if request.description.is_some() {
-        set_clauses.push(format!("description = '{}'", request.description.as_ref().unwrap().replace('\'', "''")));
+        set_clauses.push(format!(
+            "description = '{}'",
+            request.description.as_ref().unwrap().replace('\'', "''")
+        ));
     }
 
     let query = format!(
@@ -472,43 +500,60 @@ pub async fn update_workspace(
         set_clauses.join(", ")
     );
 
-    let result: Option<(uuid::Uuid, String, String, Option<String>, String, Option<uuid::Uuid>, Option<uuid::Uuid>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> = 
-        sqlx::query_as(&query)
-            .bind(workspace_id)
-            .fetch_optional(&state.db_pool)
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ApiResponse {
-                        success: false,
-                        data: None,
-                        error: Some(ApiError {
-                            code: "UPDATE_FAILED".to_string(),
-                            message: e.to_string(),
-                        }),
+    let result: Option<(
+        uuid::Uuid,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<uuid::Uuid>,
+        Option<uuid::Uuid>,
+        chrono::DateTime<chrono::Utc>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(&query)
+        .bind(workspace_id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "UPDATE_FAILED".to_string(),
+                        message: e.to_string(),
                     }),
-                )
-            })?;
+                }),
+            )
+        })?;
 
     match result {
-        Some((id, name, slug, description, workspace_type, owner_user_id, tenant_id, created_at, updated_at)) => {
-            Ok(Json(ApiResponse {
-                success: true,
-                data: Some(WorkspaceResponse {
-                    id: id.to_string(),
-                    name,
-                    slug,
-                    description,
-                    workspace_type,
-                    owner_user_id: owner_user_id.map(|u| u.to_string()),
-                    tenant_id: tenant_id.map(|t| t.to_string()),
-                    created_at: created_at.to_rfc3339(),
-                    updated_at: updated_at.to_rfc3339(),
-                }),
-                error: None,
-            }))
-        }
+        Some((
+            id,
+            name,
+            slug,
+            description,
+            workspace_type,
+            owner_user_id,
+            tenant_id,
+            created_at,
+            updated_at,
+        )) => Ok(Json(ApiResponse {
+            success: true,
+            data: Some(WorkspaceResponse {
+                id: id.to_string(),
+                name,
+                slug,
+                description,
+                workspace_type,
+                owner_user_id: owner_user_id.map(|u| u.to_string()),
+                tenant_id: tenant_id.map(|t| t.to_string()),
+                created_at: created_at.to_rfc3339(),
+                updated_at: updated_at.to_rfc3339(),
+            }),
+            error: None,
+        })),
         None => Err((
             StatusCode::NOT_FOUND,
             Json(ApiResponse {
@@ -524,7 +569,7 @@ pub async fn update_workspace(
 }
 
 /// Delete a workspace
-/// 
+///
 /// DELETE /api/v1/workspaces/:id
 pub async fn delete_workspace(
     State(state): State<AppState>,
@@ -581,13 +626,16 @@ pub async fn delete_workspace(
 }
 
 /// Invite a user to a workspace
-/// 
+///
 /// POST /api/v1/workspaces/:id/members
 pub async fn invite_member(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
     Json(request): Json<InviteMemberRequest>,
-) -> Result<(StatusCode, Json<ApiResponse<WorkspaceMemberResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<
+    (StatusCode, Json<ApiResponse<WorkspaceMemberResponse>>),
+    (StatusCode, Json<ApiResponse<()>>),
+> {
     let ws_id = uuid::Uuid::parse_str(&workspace_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
@@ -679,7 +727,7 @@ pub async fn invite_member(
 }
 
 /// List workspace members
-/// 
+///
 /// GET /api/v1/workspaces/:id/members
 pub async fn list_members(
     State(state): State<AppState>,
