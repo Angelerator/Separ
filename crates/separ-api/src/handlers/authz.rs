@@ -355,25 +355,54 @@ pub async fn read_relationships(
     }
 }
 
+/// Parse subject type from string
+/// 
+/// Supports all subject types defined in the SpiceDB schema:
+/// - user: Individual user
+/// - service_account: Service account for machine-to-machine auth
+/// - group: Group of users
+/// - platform: The entire platform (root level)
+/// - tenant: A tenant/organization
+/// - workspace: A workspace within a tenant
+/// - application: An application within a workspace
+/// - role: A role that can be assigned to users
+/// - anonymous: Anonymous/unauthenticated access
+/// - *: Wildcard for all subjects
 fn parse_subject_type(s: &str) -> Result<SubjectType, ApiError> {
     match s {
         "user" => Ok(SubjectType::User),
         "service_account" => Ok(SubjectType::ServiceAccount),
         "group" => Ok(SubjectType::Group),
+        "platform" => Ok(SubjectType::Platform),
+        "tenant" => Ok(SubjectType::Tenant),
+        "workspace" => Ok(SubjectType::Workspace),
+        "application" => Ok(SubjectType::Application),
+        "role" => Ok(SubjectType::Role),
+        "anonymous" => Ok(SubjectType::Anonymous),
         "*" => Ok(SubjectType::Wildcard),
         _ => Err(ApiError {
             code: "INVALID_SUBJECT_TYPE".to_string(),
-            message: format!("Invalid subject type: {}", s),
+            message: format!(
+                "Invalid subject type: {}. Valid types: user, service_account, group, platform, tenant, workspace, application, role, anonymous, *",
+                s
+            ),
             details: None,
         }),
     }
 }
 
+/// Convert subject type to string
 fn subject_type_to_string(t: &SubjectType) -> String {
     match t {
         SubjectType::User => "user".to_string(),
         SubjectType::ServiceAccount => "service_account".to_string(),
         SubjectType::Group => "group".to_string(),
+        SubjectType::Platform => "platform".to_string(),
+        SubjectType::Tenant => "tenant".to_string(),
+        SubjectType::Workspace => "workspace".to_string(),
+        SubjectType::Application => "application".to_string(),
+        SubjectType::Role => "role".to_string(),
+        SubjectType::Anonymous => "anonymous".to_string(),
         SubjectType::Wildcard => "*".to_string(),
     }
 }

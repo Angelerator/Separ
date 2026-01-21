@@ -28,7 +28,7 @@ tokio-stream = "0.1"
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }
 tower = { version = "0.5", features = ["full"] }
-tower-http = { version = "0.6", features = ["trace", "cors", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "compression-gzip", "limit", "set-header"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -73,6 +73,16 @@ secrecy = { version = "0.10", features = ["serde"] }
 
 # URL encoding
 urlencoding = "2"
+
+# Rate limiting
+governor = "0.7"
+tower_governor = "0.5"
+
+# Caching
+moka = { version = "0.12", features = ["future"] }
+
+# Request tracing
+http = "1"
 
 # Internal crates
 separ-core = { path = "crates/separ-core" }

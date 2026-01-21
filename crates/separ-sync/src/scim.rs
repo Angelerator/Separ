@@ -94,6 +94,7 @@ where
             last_login_at: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            zed_token: None, // Will be set when permissions are assigned
         };
 
         let created_user = self.user_repo.create(&user).await?;
@@ -168,6 +169,7 @@ where
             last_login_at: existing.last_login_at,
             created_at: existing.created_at,
             updated_at: chrono::Utc::now(),
+            zed_token: existing.zed_token, // Preserve existing token
         };
 
         let result = self.user_repo.update(&updated_user).await?;

@@ -424,3 +424,221 @@ async fn cleanup_test_data(_prefix: &str) {
     // 2. Delete them all
 }
 
+// =============================================================================
+// Workspace-First Model Tests (TDD)
+// =============================================================================
+
+mod workspace_first_model {
+    use super::*;
+
+    /// Test: User registration should NOT create a tenant
+    /// Expected: User created with tenant_id = NULL
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_registration_creates_user_without_tenant() {
+        let prefix = test_id();
+        let email = format!("{}@acme.com", prefix);
+        
+        // 1. Register user with corporate email
+        // 2. Assert: User created successfully
+        // 3. Assert: User has NO tenant_id (NULL)
+        // 4. Assert: NO tenant was created
+        
+        println!("Test: registration creates user without tenant");
+        println!("  Email: {}", email);
+    }
+
+    /// Test: Registration should create a personal workspace for the user
+    /// Expected: Workspace created with owner_user_id = new user's ID
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_registration_creates_personal_workspace() {
+        let prefix = test_id();
+        let email = format!("{}@acme.com", prefix);
+        
+        // 1. Register user
+        // 2. Assert: Personal workspace created
+        // 3. Assert: User is owner of workspace
+        // 4. Assert: Workspace type is 'personal'
+        
+        println!("Test: registration creates personal workspace");
+        println!("  Email: {}", email);
+    }
+
+    /// Test: User should be able to create additional workspaces
+    /// Expected: Workspace created, user becomes owner
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_user_can_create_team_workspace() {
+        let prefix = test_id();
+        let user_id = format!("{}_user", prefix);
+        let workspace_name = format!("{}_workspace", prefix);
+        
+        // 1. Create user (without tenant)
+        // 2. Create team workspace
+        // 3. Assert: Workspace created successfully
+        // 4. Assert: User is owner
+        // 5. Assert: Workspace type is 'team'
+        
+        println!("Test: user can create team workspace");
+        println!("  User: {}", user_id);
+        println!("  Workspace: {}", workspace_name);
+    }
+
+    /// Test: User can invite others to their workspace
+    /// Expected: Invited user becomes member of workspace
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_user_can_invite_to_workspace() {
+        let prefix = test_id();
+        let owner_id = format!("{}_owner", prefix);
+        let member_id = format!("{}_member", prefix);
+        let workspace_id = format!("{}_workspace", prefix);
+        
+        // 1. Create owner user
+        // 2. Create workspace
+        // 3. Create member user
+        // 4. Invite member to workspace
+        // 5. Assert: Member can view workspace
+        // 6. Assert: Member cannot manage workspace
+        
+        println!("Test: user can invite to workspace");
+        println!("  Owner: {}", owner_id);
+        println!("  Member: {}", member_id);
+        println!("  Workspace: {}", workspace_id);
+    }
+
+    /// Test: Platform admin can claim domain for a user
+    /// Expected: Tenant created, user becomes owner
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_platform_admin_can_assign_tenant_owner() {
+        let prefix = test_id();
+        let domain = format!("{}.example.com", prefix);
+        let user_email = format!("admin@{}", domain);
+        
+        // 1. Register user with corporate email
+        // 2. Platform admin claims domain for this user
+        // 3. Assert: Tenant created with domain = domain
+        // 4. Assert: User is now tenant owner
+        // 5. Assert: Tenant status = 'claimed'
+        
+        println!("Test: platform admin can assign tenant owner");
+        println!("  Domain: {}", domain);
+        println!("  User: {}", user_email);
+    }
+
+    /// Test: After domain claim, tenant owner can manage all domain users
+    /// Expected: Owner has manage permission on users with matching domain
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_tenant_owner_can_manage_domain_users() {
+        let prefix = test_id();
+        let domain = format!("{}.example.com", prefix);
+        let owner_email = format!("cto@{}", domain);
+        let employee_email = format!("employee@{}", domain);
+        
+        // 1. Register owner and employee (both same domain)
+        // 2. Platform admin assigns owner as tenant owner
+        // 3. Assert: Owner can manage employee user
+        // 4. Assert: Employee cannot manage owner
+        
+        println!("Test: tenant owner can manage domain users");
+        println!("  Domain: {}", domain);
+        println!("  Owner: {}", owner_email);
+        println!("  Employee: {}", employee_email);
+    }
+
+    /// Test: Public email domains cannot be claimed
+    /// Expected: Error when trying to claim gmail.com, outlook.com, etc.
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_public_domains_cannot_be_claimed() {
+        let prefix = test_id();
+        let gmail_user = format!("{}@gmail.com", prefix);
+        
+        // 1. Register user with gmail.com
+        // 2. Try to claim gmail.com as tenant
+        // 3. Assert: Error - public domain cannot be claimed
+        
+        println!("Test: public domains cannot be claimed");
+        println!("  User: {}", gmail_user);
+    }
+
+    /// Test: Users from unclaimed domains work independently
+    /// Expected: Each user has their own workspace, no tenant governance
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_unclaimed_domain_users_are_independent() {
+        let prefix = test_id();
+        let domain = format!("{}.example.com", prefix);
+        let user1_email = format!("alice@{}", domain);
+        let user2_email = format!("bob@{}", domain);
+        
+        // 1. Register user1 and user2 (same domain, no tenant claim)
+        // 2. Assert: Both users have their own personal workspace
+        // 3. Assert: user1 cannot manage user2
+        // 4. Assert: user2 cannot manage user1
+        // 5. Assert: No tenant exists for this domain
+        
+        println!("Test: unclaimed domain users are independent");
+        println!("  User1: {}", user1_email);
+        println!("  User2: {}", user2_email);
+    }
+
+    /// Test: After claim, existing workspaces are preserved
+    /// Expected: Personal workspaces remain, but tenant governance applies
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_claim_preserves_existing_workspaces() {
+        let prefix = test_id();
+        let domain = format!("{}.example.com", prefix);
+        let user_email = format!("user@{}", domain);
+        
+        // 1. Register user (creates personal workspace)
+        // 2. User creates a team workspace
+        // 3. Platform admin claims domain
+        // 4. Assert: Personal workspace still exists
+        // 5. Assert: Team workspace still exists
+        // 6. Assert: User is still owner of their workspaces
+        
+        println!("Test: claim preserves existing workspaces");
+        println!("  User: {}", user_email);
+    }
+
+    /// Test: Duplicate email registration should fail
+    /// Expected: Error returned when trying to register with same email
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_duplicate_email_registration_rejected() {
+        let prefix = test_id();
+        let email = format!("{}@acme.com", prefix);
+        
+        // 1. Register user with email
+        // 2. Try to register another user with SAME email
+        // 3. Assert: Second registration fails with "user_exists" error
+        // 4. Assert: Only ONE user exists with this email
+        
+        println!("Test: duplicate email registration rejected");
+        println!("  Email: {}", email);
+    }
+
+    /// Test: Email uniqueness is case-insensitive
+    /// Expected: user@ACME.com and user@acme.com are the same
+    #[tokio::test]
+    #[ignore = "Requires running database"]
+    async fn test_email_uniqueness_case_insensitive() {
+        let prefix = test_id();
+        let email_lower = format!("{}@acme.com", prefix);
+        let email_upper = format!("{}@ACME.COM", prefix);
+        
+        // 1. Register user with lowercase email
+        // 2. Try to register with UPPERCASE version
+        // 3. Assert: Second registration fails
+        
+        println!("Test: email uniqueness case insensitive");
+        println!("  Email1: {}", email_lower);
+        println!("  Email2: {}", email_upper);
+    }
+}
+

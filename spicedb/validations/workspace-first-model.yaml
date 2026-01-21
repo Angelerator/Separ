@@ -1,0 +1,123 @@
+# SpiceDB Validation for Workspace-First Model
+# Run with: zed validate spicedb/validations/workspace-first-model.yaml
+#
+# This validates the authorization model for:
+# 1. Personal workspaces (no tenant)
+# 2. Team workspaces (no tenant until domain claimed)
+# 3. Organization workspaces (with tenant)
+# 4. Domain claiming and tenant ownership
+
+schemaFile: "../schema.zed"
+
+# Test relationships representing the workspace-first model
+relationships: |-
+  platform:default#admin@user:platform_admin
+  workspace:alice_personal#owner@user:alice
+  workspace:alice_personal#member@user:alice
+  workspace:bobs_team#owner@user:bob
+  workspace:bobs_team#member@user:carol
+  workspace:bobs_team#viewer@user:dave
+  tenant:acme#platform@platform:default
+  tenant:acme#owner@user:cto
+  tenant:acme#admin@user:it_admin
+  tenant:acme#member@user:employee1
+  tenant:acme#member@user:employee2
+  workspace:acme_engineering#tenant@tenant:acme
+  workspace:acme_engineering#owner@user:engineering_lead
+  workspace:acme_engineering#admin@user:tech_lead
+  workspace:acme_engineering#member@user:developer1
+  workspace:acme_engineering#member@user:developer2
+  user:cto#tenant@tenant:acme
+  user:it_admin#tenant@tenant:acme
+  user:employee1#tenant@tenant:acme
+  user:employee2#tenant@tenant:acme
+
+assertions:
+  assertTrue:
+    # === Personal Workspace Tests ===
+    # Owner can manage their personal workspace
+    - "workspace:alice_personal#manage@user:alice"
+    - "workspace:alice_personal#view@user:alice"
+    - "workspace:alice_personal#invite@user:alice"
+    
+    # === Team Workspace Tests (No Tenant) ===
+    # Owner can manage team workspace
+    - "workspace:bobs_team#manage@user:bob"
+    - "workspace:bobs_team#invite@user:bob"
+    # Members can view
+    - "workspace:bobs_team#view@user:carol"
+    # Viewers can view
+    - "workspace:bobs_team#view@user:dave"
+    
+    # === Organization Workspace Tests (With Tenant) ===
+    # Workspace owner can manage
+    - "workspace:acme_engineering#manage@user:engineering_lead"
+    # Workspace admin can manage
+    - "workspace:acme_engineering#manage@user:tech_lead"
+    # Workspace members can view
+    - "workspace:acme_engineering#view@user:developer1"
+    - "workspace:acme_engineering#view@user:developer2"
+    
+    # === Tenant Owner Permissions ===
+    # Tenant owner can manage tenant
+    - "tenant:acme#manage@user:cto"
+    - "tenant:acme#manage_users@user:cto"
+    - "tenant:acme#create_workspace@user:cto"
+    # Tenant owner inherits workspace management through tenant
+    - "workspace:acme_engineering#manage@user:cto"
+    
+    # === Tenant Admin Permissions ===
+    - "tenant:acme#manage@user:it_admin"
+    - "workspace:acme_engineering#manage@user:it_admin"
+    
+    # === Platform Admin Cross-Tenant Access ===
+    - "tenant:acme#manage@user:platform_admin"
+    
+  assertFalse:
+    # === Personal Workspace Isolation ===
+    # Other users cannot access Alice's personal workspace
+    - "workspace:alice_personal#manage@user:bob"
+    - "workspace:alice_personal#view@user:bob"
+    
+    # === Team Workspace Isolation ===
+    # Non-members cannot access team workspace
+    - "workspace:bobs_team#manage@user:alice"
+    - "workspace:bobs_team#view@user:alice"
+    # Viewers cannot manage
+    - "workspace:bobs_team#manage@user:dave"
+    # Members cannot manage (only owner/admin can)
+    - "workspace:bobs_team#manage@user:carol"
+    
+    # === Tenant Isolation ===
+    # Regular tenant members cannot manage tenant
+    - "tenant:acme#manage@user:employee1"
+    - "tenant:acme#manage_users@user:employee1"
+    
+    # === Cross-Tenant Isolation ===
+    # Users from one tenant cannot access another tenant's workspace
+    - "workspace:alice_personal#view@user:employee1"
+
+validation:
+  # Who can manage Alice's personal workspace?
+  workspace:alice_personal#manage:
+    - "[user:alice] is <workspace:alice_personal#owner>"
+  
+  # Who can view Bob's team workspace?
+  workspace:bobs_team#view:
+    - "[user:bob] is <workspace:bobs_team#owner>"
+    - "[user:carol] is <workspace:bobs_team#member>"
+    - "[user:dave] is <workspace:bobs_team#viewer>"
+  
+  # Who can manage the Acme engineering workspace?
+  workspace:acme_engineering#manage:
+    - "[user:engineering_lead] is <workspace:acme_engineering#owner>"
+    - "[user:tech_lead] is <workspace:acme_engineering#admin>"
+    - "[user:cto] is <tenant:acme#owner>"
+    - "[user:it_admin] is <tenant:acme#admin>"
+    - "[user:platform_admin] is <platform:default#admin>"
+  
+  # Who owns tenant:acme?
+  tenant:acme#manage:
+    - "[user:cto] is <tenant:acme#owner>"
+    - "[user:it_admin] is <tenant:acme#admin>"
+    - "[user:platform_admin] is <platform:default#admin>"

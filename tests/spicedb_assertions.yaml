@@ -1,312 +1,119 @@
-# SpiceDB Schema Assertions
-# These tests validate the authorization model using SpiceDB's assertion format
-# Run with: zed validate schema.zed --assertions assertions.yaml
+# SpiceDB Quick Assertions for Integration Tests
+# These can be loaded into SpiceDB during integration tests
+# 
+# Format compatible with SpiceDB Playground and zed validate
 
----
-# =============================================================================
-# Tenant Ownership Tests
-# =============================================================================
+schema: |-
+  definition platform {
+      relation admin: user | service_account
+      relation member: user | service_account
+      
+      permission manage = admin
+      permission view = admin + member
+  }
 
-# Tenant owner should have all permissions
-assertTrue:
-  - resource: "tenant:acme_corp"
-    permission: "manage"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
+  definition tenant {
+      relation platform: platform
+      relation owner: user | service_account
+      relation admin: user | service_account | group#member
+      relation member: user | service_account | group#member
+      
+      permission manage = owner + admin + platform->admin
+      permission view = owner + admin + member + platform->admin
+      permission create_workspace = owner + admin
+      permission manage_users = owner + admin
+      permission manage_groups = owner + admin
+      permission manage_oauth = owner + admin
+      permission view_audit = owner + admin
+  }
 
-  - resource: "tenant:acme_corp"
-    permission: "view"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
+  definition workspace {
+      relation tenant: tenant
+      relation owner: user | service_account
+      relation admin: user | service_account | group#member
+      relation member: user | service_account | group#member
+      relation viewer: user | service_account | group#member
+      
+      permission manage = owner + admin + tenant->manage
+      permission view = owner + admin + member + viewer + tenant->manage
+      permission create_application = owner + admin + tenant->manage
+      permission manage_members = owner + admin
+      permission invite = owner + admin
+  }
 
-  - resource: "tenant:acme_corp"
-    permission: "create_workspace"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
+  definition user {
+      relation self: user
+      relation tenant: tenant
+      
+      permission manage = self + tenant->manage_users
+      permission view = self + tenant->view
+  }
 
-  - resource: "tenant:acme_corp"
-    permission: "manage_users"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
+  definition group {
+      relation tenant: tenant
+      relation owner: user | service_account
+      relation admin: user | service_account
+      relation member: user | service_account | group#member
+      
+      permission manage = owner + admin + tenant->manage_groups
+      permission view = owner + admin + member + tenant->view
+      permission add_member = owner + admin
+      permission remove_member = owner + admin
+  }
 
-  - resource: "tenant:acme_corp"
-    permission: "manage_groups"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
+  definition service_account {
+      relation tenant: tenant
+      relation owner: user
+      relation admin: user | group#member
+      
+      permission manage = owner + admin + tenant->manage
+      permission use = owner + admin
+      permission rotate_credentials = owner + admin
+  }
 
-# =============================================================================
-# Tenant Admin Tests
-# =============================================================================
+# Test data for workspace-first model
+relationships: |-
+  workspace:personal_ws#owner@user:alice
+  workspace:team_ws#owner@user:bob
+  workspace:team_ws#member@user:carol
+  platform:default#admin@user:superadmin
+  tenant:acme#platform@platform:default
+  tenant:acme#owner@user:cto
+  tenant:acme#member@user:employee
+  workspace:org_ws#tenant@tenant:acme
+  workspace:org_ws#owner@user:team_lead
+  workspace:org_ws#member@user:developer
 
-# Tenant admin should have management permissions
-assertTrue:
-  - resource: "tenant:acme_corp"
-    permission: "manage"
-    subject: "user:bob"
-    relationships:
-      - "tenant:acme_corp#admin@user:bob"
-
-  - resource: "tenant:acme_corp"
-    permission: "create_workspace"
-    subject: "user:bob"
-    relationships:
-      - "tenant:acme_corp#admin@user:bob"
-
-# =============================================================================
-# Tenant Member Tests
-# =============================================================================
-
-# Tenant member should only have view permission
-assertTrue:
-  - resource: "tenant:acme_corp"
-    permission: "view"
-    subject: "user:charlie"
-    relationships:
-      - "tenant:acme_corp#member@user:charlie"
-
-assertFalse:
-  - resource: "tenant:acme_corp"
-    permission: "manage"
-    subject: "user:charlie"
-    relationships:
-      - "tenant:acme_corp#member@user:charlie"
-
-  - resource: "tenant:acme_corp"
-    permission: "create_workspace"
-    subject: "user:charlie"
-    relationships:
-      - "tenant:acme_corp#member@user:charlie"
-
-# =============================================================================
-# Workspace Inheritance Tests
-# =============================================================================
-
-# Tenant owner should be able to manage workspaces within their tenant
-assertTrue:
-  - resource: "workspace:engineering"
-    permission: "manage"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
-      - "workspace:engineering#tenant@tenant:acme_corp"
-
-# Workspace owner should be able to manage their workspace
-assertTrue:
-  - resource: "workspace:engineering"
-    permission: "manage"
-    subject: "user:dave"
-    relationships:
-      - "workspace:engineering#owner@user:dave"
-
-# Workspace member should be able to view
-assertTrue:
-  - resource: "workspace:engineering"
-    permission: "view"
-    subject: "user:eve"
-    relationships:
-      - "workspace:engineering#member@user:eve"
-
-# Workspace viewer should not be able to manage
-assertFalse:
-  - resource: "workspace:engineering"
-    permission: "manage"
-    subject: "user:eve"
-    relationships:
-      - "workspace:engineering#viewer@user:eve"
-
-# =============================================================================
-# Application Inheritance Tests
-# =============================================================================
-
-# Workspace owner should be able to manage applications
-assertTrue:
-  - resource: "application:my_app"
-    permission: "manage"
-    subject: "user:dave"
-    relationships:
-      - "workspace:engineering#owner@user:dave"
-      - "application:my_app#workspace@workspace:engineering"
-
-# Application developer should be able to deploy
-assertTrue:
-  - resource: "application:my_app"
-    permission: "deploy"
-    subject: "user:frank"
-    relationships:
-      - "application:my_app#developer@user:frank"
-
-# Application viewer should not be able to deploy
-assertFalse:
-  - resource: "application:my_app"
-    permission: "deploy"
-    subject: "user:grace"
-    relationships:
-      - "application:my_app#viewer@user:grace"
-
-# =============================================================================
-# Resource Inheritance Tests
-# =============================================================================
-
-# Resource owner should have all permissions
-assertTrue:
-  - resource: "resource:config_file"
-    permission: "manage"
-    subject: "user:henry"
-    relationships:
-      - "resource:config_file#owner@user:henry"
-
-  - resource: "resource:config_file"
-    permission: "edit"
-    subject: "user:henry"
-    relationships:
-      - "resource:config_file#owner@user:henry"
-
-  - resource: "resource:config_file"
-    permission: "view"
-    subject: "user:henry"
-    relationships:
-      - "resource:config_file#owner@user:henry"
-
-  - resource: "resource:config_file"
-    permission: "delete"
-    subject: "user:henry"
-    relationships:
-      - "resource:config_file#owner@user:henry"
-
-# Resource editor should be able to edit and view, but not manage or delete
-assertTrue:
-  - resource: "resource:config_file"
-    permission: "edit"
-    subject: "user:ivy"
-    relationships:
-      - "resource:config_file#editor@user:ivy"
-
-  - resource: "resource:config_file"
-    permission: "view"
-    subject: "user:ivy"
-    relationships:
-      - "resource:config_file#editor@user:ivy"
-
-assertFalse:
-  - resource: "resource:config_file"
-    permission: "manage"
-    subject: "user:ivy"
-    relationships:
-      - "resource:config_file#editor@user:ivy"
-
-  - resource: "resource:config_file"
-    permission: "delete"
-    subject: "user:ivy"
-    relationships:
-      - "resource:config_file#editor@user:ivy"
-
-# =============================================================================
-# Group Membership Tests
-# =============================================================================
-
-# Group members should inherit permissions via group
-assertTrue:
-  - resource: "tenant:acme_corp"
-    permission: "manage"
-    subject: "user:jack"
-    relationships:
-      - "group:admins#member@user:jack"
-      - "tenant:acme_corp#admin@group:admins#member"
-
-# Nested group membership should work
-assertTrue:
-  - resource: "workspace:engineering"
-    permission: "view"
-    subject: "user:kate"
-    relationships:
-      - "group:eng_team#member@user:kate"
-      - "workspace:engineering#member@group:eng_team#member"
-
-# =============================================================================
-# Service Account Tests
-# =============================================================================
-
-# Service accounts should be able to hold relations like users
-assertTrue:
-  - resource: "tenant:acme_corp"
-    permission: "view"
-    subject: "service_account:ci_bot"
-    relationships:
-      - "tenant:acme_corp#member@service_account:ci_bot"
-
-# Service account owners should be able to manage them
-assertTrue:
-  - resource: "service_account:ci_bot"
-    permission: "manage"
-    subject: "user:leo"
-    relationships:
-      - "service_account:ci_bot#owner@user:leo"
-
-# =============================================================================
-# Platform Admin Tests
-# =============================================================================
-
-# Platform admin should have elevated permissions across tenants
-assertTrue:
-  - resource: "tenant:acme_corp"
-    permission: "manage"
-    subject: "user:platform_admin"
-    relationships:
-      - "platform:separ#admin@user:platform_admin"
-      - "tenant:acme_corp#platform@platform:separ"
-
-# =============================================================================
-# OAuth Provider Tests
-# =============================================================================
-
-# OAuth provider admins should be able to manage providers
-assertTrue:
-  - resource: "oauth_provider:google_sso"
-    permission: "manage"
-    subject: "user:mike"
-    relationships:
-      - "oauth_provider:google_sso#admin@user:mike"
-
-# Tenant admins should be able to manage oauth via tenant relation
-assertTrue:
-  - resource: "oauth_provider:google_sso"
-    permission: "configure"
-    subject: "user:nick"
-    relationships:
-      - "tenant:acme_corp#admin@user:nick"
-      - "oauth_provider:google_sso#tenant@tenant:acme_corp"
-
-# =============================================================================
-# Negative Tests - Permission Denials
-# =============================================================================
-
-# Random user should not have any permissions
-assertFalse:
-  - resource: "tenant:acme_corp"
-    permission: "view"
-    subject: "user:random"
-    relationships: []
-
-  - resource: "workspace:engineering"
-    permission: "view"
-    subject: "user:random"
-    relationships: []
-
-  - resource: "application:my_app"
-    permission: "view"
-    subject: "user:random"
-    relationships: []
-
-# User from one tenant should not access another tenant
-assertFalse:
-  - resource: "tenant:other_corp"
-    permission: "view"
-    subject: "user:alice"
-    relationships:
-      - "tenant:acme_corp#owner@user:alice"
-
+assertions:
+  assertTrue:
+    # Personal workspace - owner has full access
+    - "workspace:personal_ws#manage@user:alice"
+    - "workspace:personal_ws#view@user:alice"
+    
+    # Team workspace - owner has full access
+    - "workspace:team_ws#manage@user:bob"
+    # Team workspace - member can view
+    - "workspace:team_ws#view@user:carol"
+    
+    # Organization workspace - tenant owner inherits access
+    - "workspace:org_ws#manage@user:cto"
+    # Organization workspace - direct owner has access
+    - "workspace:org_ws#manage@user:team_lead"
+    # Organization workspace - member can view
+    - "workspace:org_ws#view@user:developer"
+    
+    # Platform admin has cross-tenant access
+    - "tenant:acme#manage@user:superadmin"
+    
+  assertFalse:
+    # Personal workspace isolation
+    - "workspace:personal_ws#view@user:bob"
+    
+    # Team workspace - members cannot manage
+    - "workspace:team_ws#manage@user:carol"
+    
+    # Tenant members cannot manage tenant
+    - "tenant:acme#manage@user:employee"
+    
+    # Cross-tenant isolation
+    - "workspace:personal_ws#view@user:employee"

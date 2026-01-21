@@ -115,7 +115,8 @@ async fn initialize_services(settings: &Settings) -> Result<AppState> {
         }
     };
 
-    // Create authorization service
+    // Create authorization service (clone client for state)
+    let spicedb_client_clone = spicedb_client.clone();
     let auth_service = SpiceDbAuthorizationService::new(spicedb_client);
 
     // Initialize schema in SpiceDB
@@ -139,7 +140,7 @@ async fn initialize_services(settings: &Settings) -> Result<AppState> {
     );
 
     // Create application state
-    let state = AppState::new(db_pool, auth_service, jwt_service);
+    let state = AppState::new(db_pool, spicedb_client_clone, auth_service, jwt_service);
 
     info!("All services initialized successfully");
     Ok(state)

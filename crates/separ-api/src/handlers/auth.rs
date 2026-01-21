@@ -364,16 +364,18 @@ async fn validate_password(
         "default".to_string()
     };
 
-    let username = &request.username;
+    // Normalize username (email) to lowercase for case-insensitive login
+    let username = request.username.trim().to_lowercase();
     let password = &request.credential;
 
     // First, try to find user by email and verify password
+    // Email lookup is case-insensitive (stored emails are normalized to lowercase)
     let stored_creds: Option<(String, String)> = sqlx::query_as(
         r#"
         SELECT uc.user_id, uc.password_hash
         FROM user_credentials uc
         WHERE uc.user_id IN (
-            SELECT id::text FROM users WHERE email = $1
+            SELECT id::text FROM users WHERE LOWER(email) = $1
             UNION
             SELECT $1  -- Also try direct user_id lookup
         )
@@ -382,7 +384,7 @@ async fn validate_password(
         LIMIT 1
         "#,
     )
-    .bind(username)
+    .bind(&username)
     .fetch_optional(&state.db_pool)
     .await
     .unwrap_or(None);
@@ -449,8 +451,8 @@ async fn validate_password(
 
     // No stored credentials - check if user exists in database first
     let user_exists: Option<(String, String)> =
-        sqlx::query_as("SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1")
-            .bind(username)
+        sqlx::query_as("SELECT id::text, display_name FROM users WHERE LOWER(email) = $1 LIMIT 1")
+            .bind(&username)
             .fetch_optional(&state.db_pool)
             .await
             .unwrap_or(None);
@@ -814,16 +816,18 @@ async fn validate_password_internal(
         "default".to_string()
     };
 
-    let username = &request.username;
+    // Normalize username (email) to lowercase for case-insensitive login
+    let username = request.username.trim().to_lowercase();
     let password = &request.credential;
 
     // First, try to find user by email and verify password
+    // Email lookup is case-insensitive (stored emails are normalized to lowercase)
     let stored_creds: Option<(String, String)> = sqlx::query_as(
         r#"
         SELECT uc.user_id, uc.password_hash
         FROM user_credentials uc
         WHERE uc.user_id IN (
-            SELECT id::text FROM users WHERE email = $1
+            SELECT id::text FROM users WHERE LOWER(email) = $1
             UNION
             SELECT $1
         )
@@ -832,7 +836,7 @@ async fn validate_password_internal(
         LIMIT 1
         "#,
     )
-    .bind(username)
+    .bind(&username)
     .fetch_optional(&state.db_pool)
     .await
     .unwrap_or(None);
@@ -896,8 +900,8 @@ async fn validate_password_internal(
 
     // Check if user exists but has no password
     let user_exists: Option<(String, String)> =
-        sqlx::query_as("SELECT id::text, display_name FROM users WHERE email = $1 LIMIT 1")
-            .bind(username)
+        sqlx::query_as("SELECT id::text, display_name FROM users WHERE LOWER(email) = $1 LIMIT 1")
+            .bind(&username)
             .fetch_optional(&state.db_pool)
             .await
             .unwrap_or(None);
@@ -982,6 +986,230 @@ async fn validate_password_internal(
             message: "Invalid username or password".to_string(),
         }),
     ))
+}
+
+// =============================================================================
+// User Self-Registration (for desktop apps like Hormoz)
+// =============================================================================
+
+/// Request for user self-registration
+#[derive(Debug, Deserialize)]
+pub struct RegisterUserRequest {
+    /// Email address (will be username)
+    pub email: String,
+    /// Password (minimum 12 characters)
+    pub password: String,
+    /// Display name
+    pub display_name: String,
+    /// Optional tenant hint
+    #[serde(default)]
+    pub tenant_hint: Option<String>,
+}
+
+/// Response from user registration
+#[derive(Debug, Serialize)]
+pub struct RegisterUserResponse {
+    pub success: bool,
+    pub user_id: String,
+    pub workspace_id: String,
+    pub message: Option<String>,
+}
+
+/// Register a new user (self-service)
+///
+/// POST /api/v1/auth/register
+///
+/// This endpoint allows users to self-register from desktop apps like Hormoz.
+/// 
+/// ## Workspace-First Model
+/// - Creates a new user WITHOUT assigning to a tenant
+/// - Creates a personal workspace for the user (user is owner)
+/// - Tenants are only created when a domain is claimed by platform admin
+pub async fn register_user(
+    State(state): State<AppState>,
+    Json(request): Json<RegisterUserRequest>,
+) -> Result<Json<RegisterUserResponse>, (StatusCode, Json<AuthError>)> {
+    // Normalize email to lowercase for consistent storage and lookup
+    let normalized_email = request.email.trim().to_lowercase();
+
+    // Validate email format
+    if !normalized_email.contains('@') || !normalized_email.contains('.') {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AuthError {
+                error: "invalid_email".to_string(),
+                message: "Invalid email format".to_string(),
+            }),
+        ));
+    }
+
+    // Validate password strength
+    if request.password.len() < 12 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AuthError {
+                error: "weak_password".to_string(),
+                message: "Password must be at least 12 characters".to_string(),
+            }),
+        ));
+    }
+
+    // Check if user already exists (case-insensitive via normalized email)
+    let existing_user: Option<(String,)> =
+        sqlx::query_as("SELECT id::text FROM users WHERE LOWER(email) = $1 LIMIT 1")
+            .bind(&normalized_email)
+            .fetch_optional(&state.db_pool)
+            .await
+            .unwrap_or(None);
+
+    if existing_user.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(AuthError {
+                error: "user_exists".to_string(),
+                message: "User already exists".to_string(),
+            }),
+        ));
+    }
+
+    // =========================================================================
+    // WORKSPACE-FIRST MODEL
+    // =========================================================================
+    // 1. Create user WITHOUT tenant (tenant_id = NULL)
+    // 2. Create personal workspace for user
+    // 3. User owns their workspace
+    // 4. No tenant governance until domain is claimed by platform admin
+    // =========================================================================
+
+    // Create user ID
+    let user_id = separ_core::UserId::new();
+    let user_id_str = user_id.to_string();
+
+    info!(
+        email = %normalized_email,
+        user_id = %user_id_str,
+        "Registering new user (workspace-first model)"
+    );
+
+    // Hash the password
+    let password_hash = crate::password::hash_password(&request.password).map_err(|e| {
+        warn!("Failed to hash password: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AuthError {
+                error: "registration_failed".to_string(),
+                message: "Failed to process registration".to_string(),
+            }),
+        )
+    })?;
+
+    // Insert user into database WITHOUT tenant (tenant_id = NULL)
+    // Email is stored in normalized (lowercase) form
+    let result = sqlx::query(
+        r#"
+        INSERT INTO users (id, email, display_name, tenant_id, status, created_at, updated_at)
+        VALUES ($1::uuid, $2, $3, NULL, 'active', NOW(), NOW())
+        "#,
+    )
+    .bind(uuid::Uuid::parse_str(&user_id_str).unwrap())
+    .bind(&normalized_email)
+    .bind(&request.display_name)
+    .execute(&state.db_pool)
+    .await;
+
+    if let Err(e) = result {
+        warn!("Failed to create user: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AuthError {
+                error: "registration_failed".to_string(),
+                message: format!("Failed to create user: {}", e),
+            }),
+        ));
+    }
+
+    // Store password hash
+    let cred_result = sqlx::query(
+        r#"
+        INSERT INTO user_credentials (user_id, password_hash, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        "#,
+    )
+    .bind(&user_id_str)
+    .bind(&password_hash)
+    .execute(&state.db_pool)
+    .await;
+
+    if let Err(e) = cred_result {
+        warn!("Failed to store credentials: {}", e);
+        // Rollback user creation
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1::uuid")
+            .bind(uuid::Uuid::parse_str(&user_id_str).unwrap())
+            .execute(&state.db_pool)
+            .await;
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AuthError {
+                error: "registration_failed".to_string(),
+                message: "Failed to store credentials".to_string(),
+            }),
+        ));
+    }
+
+    // Create personal workspace for user
+    let workspace_id = uuid::Uuid::new_v4();
+    let workspace_id_str = workspace_id.to_string();
+    let workspace_slug = format!("personal-{}", user_id_str.chars().take(8).collect::<String>());
+    
+    let workspace_result = sqlx::query(
+        r#"
+        INSERT INTO workspaces (id, tenant_id, owner_user_id, name, slug, description, workspace_type, created_at, updated_at)
+        VALUES ($1, NULL, $2::uuid, 'My Workspace', $3, 'Personal workspace', 'personal', NOW(), NOW())
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(uuid::Uuid::parse_str(&user_id_str).unwrap())
+    .bind(&workspace_slug)
+    .execute(&state.db_pool)
+    .await;
+
+    if let Err(e) = workspace_result {
+        warn!("Failed to create personal workspace: {}", e);
+        // Continue - user is still created, workspace creation is not critical
+    } else {
+        // Add user as owner of workspace in workspace_members table
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO workspace_members (workspace_id, user_id, role, joined_at)
+            VALUES ($1, $2::uuid, 'owner', NOW())
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(uuid::Uuid::parse_str(&user_id_str).unwrap())
+        .execute(&state.db_pool)
+        .await;
+
+        // Create workspace ownership in SpiceDB
+        let _ = state
+            .auth_service
+            .client()
+            .write_relationship("workspace", &workspace_id_str, "owner", "user", &user_id_str)
+            .await;
+    }
+
+    info!(
+        email = %request.email,
+        user_id = %user_id_str,
+        workspace_id = %workspace_id_str,
+        "User registered with personal workspace"
+    );
+
+    Ok(Json(RegisterUserResponse {
+        success: true,
+        user_id: user_id_str,
+        workspace_id: workspace_id_str,
+        message: Some("User registered successfully".to_string()),
+    }))
 }
 
 #[cfg(test)]

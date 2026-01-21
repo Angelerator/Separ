@@ -355,6 +355,7 @@ where
                 last_login_at: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
+                zed_token: None, // Will be set when permissions are assigned
             };
 
             let created_user = self.user_repo.create(&user).await?;
@@ -570,6 +571,7 @@ where
             last_login_at: Some(Utc::now()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            zed_token: None, // Will be set when permissions are assigned
         };
 
         let created_user = self.user_repo.create(&user).await?;

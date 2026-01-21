@@ -18,3 +18,8 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 
+# API key hashing
+sha2 = { workspace = true }
+hex = "0.4"
+rand = { workspace = true }
+
