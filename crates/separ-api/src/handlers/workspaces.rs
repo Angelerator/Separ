@@ -482,16 +482,13 @@ pub async fn update_workspace(
     // Build dynamic update query
     let mut set_clauses = vec!["updated_at = NOW()".to_string()];
 
-    if request.name.is_some() {
-        set_clauses.push(format!(
-            "name = '{}'",
-            request.name.as_ref().unwrap().replace('\'', "''")
-        ));
+    if let Some(name) = &request.name {
+        set_clauses.push(format!("name = '{}'", name.replace('\'', "''")));
     }
-    if request.description.is_some() {
+    if let Some(description) = &request.description {
         set_clauses.push(format!(
             "description = '{}'",
-            request.description.as_ref().unwrap().replace('\'', "''")
+            description.replace('\'', "''")
         ));
     }
 
@@ -566,6 +563,83 @@ pub async fn update_workspace(
             }),
         )),
     }
+}
+
+/// List ALL workspaces (admin endpoint — no user scoping)
+///
+/// GET /api/v1/admin/workspaces
+pub async fn admin_list_workspaces(
+    State(state): State<AppState>,
+    Query(query): Query<ListWorkspacesQuery>,
+) -> Result<Json<PaginatedResponse<WorkspaceResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+    let limit = query.limit.min(100);
+    let offset = query.offset;
+
+    let workspaces: Vec<(uuid::Uuid, String, String, Option<String>, String, Option<uuid::Uuid>, Option<uuid::Uuid>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as(
+            r#"
+            SELECT id, name, slug, description, workspace_type, owner_user_id, tenant_id, created_at, updated_at
+            FROM workspaces
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            "#,
+        )
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "LIST_FAILED".to_string(),
+                        message: e.to_string(),
+                    }),
+                }),
+            )
+        })?;
+
+    let items: Vec<WorkspaceResponse> = workspaces
+        .into_iter()
+        .map(
+            |(
+                id,
+                name,
+                slug,
+                description,
+                workspace_type,
+                owner_user_id,
+                tenant_id,
+                created_at,
+                updated_at,
+            )| {
+                WorkspaceResponse {
+                    id: id.to_string(),
+                    name,
+                    slug,
+                    description,
+                    workspace_type,
+                    owner_user_id: owner_user_id.map(|u| u.to_string()),
+                    tenant_id: tenant_id.map(|t| t.to_string()),
+                    created_at: created_at.to_rfc3339(),
+                    updated_at: updated_at.to_rfc3339(),
+                }
+            },
+        )
+        .collect();
+
+    let has_more = items.len() as u32 == limit;
+
+    Ok(Json(PaginatedResponse {
+        total: items.len() as u64,
+        items,
+        offset,
+        limit,
+        has_more,
+    }))
 }
 
 /// Delete a workspace
