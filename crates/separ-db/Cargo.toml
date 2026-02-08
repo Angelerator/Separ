@@ -23,3 +23,5 @@ sha2 = { workspace = true }
 hex = "0.4"
 rand = { workspace = true }
 
+# Encryption for storage connection credentials
+aes-gcm = "0.10"

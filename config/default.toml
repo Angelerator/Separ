@@ -26,6 +26,14 @@ issuer = "separ"
 access_token_expiry_secs = 3600
 refresh_token_expiry_secs = 604800
 
+# Azure SSO (Entra ID) - Multi-tenant "Sign in with Microsoft" for Hormoz desktop app
+# Per-customer Azure tenant IDs are stored in the identity_providers DB table.
+# Only the multi-tenant app registration's client ID is configured here.
+# ⚠️  PLACEHOLDER - Override with SEPAR__AZURE_SSO__* env vars
+[azure_sso]
+enabled = false
+app_client_id = ""
+
 # Identity Provider Settings
 [identity]
 # Default sync interval in seconds

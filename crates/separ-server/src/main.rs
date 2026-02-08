@@ -139,8 +139,42 @@ async fn initialize_services(settings: &Settings) -> Result<AppState> {
         settings.jwt.refresh_token_expiry_secs,
     );
 
+    // Get encryption key for storage connection credentials
+    let encryption_key = settings
+        .encryption_key_bytes()
+        .context("Failed to parse encryption key")?;
+    
+    if encryption_key.len() != 32 {
+        return Err(anyhow::anyhow!(
+            "Encryption key must be exactly 32 bytes (64 hex chars), got {} bytes",
+            encryption_key.len()
+        ));
+    }
+
+    // Azure SSO configuration (multi-tenant: per-customer config lives in DB)
+    let azure_sso = separ_api::state::AzureSsoConfig {
+        enabled: settings.azure_sso.enabled,
+        app_client_id: settings.azure_sso.app_client_id.clone(),
+    };
+
+    if azure_sso.enabled {
+        if azure_sso.app_client_id.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Azure SSO is enabled but SEPAR__AZURE_SSO__APP_CLIENT_ID is not set"
+            ));
+        }
+        info!("Azure SSO enabled (multi-tenant, per-customer providers in DB)");
+    }
+
     // Create application state
-    let state = AppState::new(db_pool, spicedb_client_clone, auth_service, jwt_service);
+    let state = AppState::new(
+        db_pool,
+        spicedb_client_clone,
+        auth_service,
+        jwt_service,
+        encryption_key,
+        azure_sso,
+    );
 
     info!("All services initialized successfully");
     Ok(state)

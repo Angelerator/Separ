@@ -85,6 +85,12 @@ impl SeparError {
             message: message.into(),
         }
     }
+
+    pub fn internal_error(message: impl Into<String>) -> Self {
+        Self::Internal {
+            message: message.into(),
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, SeparError>;

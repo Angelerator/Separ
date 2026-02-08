@@ -143,15 +143,25 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         // These are for initial setup and platform management
         .nest("/api/v1/admin/tenants", admin_tenant_routes())
         .nest("/api/v1/admin/users", admin_user_routes())
+        .nest("/api/v1/admin/workspaces", admin_workspace_routes())
+        .nest("/api/v1/admin/permissions", admin_permission_routes())
         .nest("/api/v1/admin/identity", admin_identity_routes())
         .nest("/api/v1/admin/domains", admin_domain_routes())
         .nest("/api/v1/admin/platform-admins", admin_platform_routes())
+        .nest(
+            "/api/v1/admin/storage-connections",
+            admin_storage_connection_routes(),
+        )
         // === PROTECTED ROUTES (require X-Admin-Key OR X-API-Key) ===
         // These are for service-to-service communication with database-backed validation
         .nest("/api/v1/tenants", protected_tenant_routes(state.clone()))
         .nest("/api/v1/users", protected_user_routes(state.clone()))
         .nest("/api/v1/authz", protected_authz_routes(state.clone()))
         .nest("/api/v1/identity", protected_identity_routes(state.clone()))
+        .nest(
+            "/api/v1/storage-connections",
+            protected_storage_connection_routes(state.clone()),
+        )
         // === AUTHENTICATED USER ROUTES ===
         // These are for authenticated users (x-user-id header from token validation)
         .nest("/api/v1/workspaces", workspace_routes())
@@ -190,6 +200,10 @@ fn admin_user_routes() -> Router<AppState> {
         .route("/{id}/roles", get(handlers::users::get_roles))
         .route("/{id}/roles", post(handlers::users::assign_role))
         .route("/{id}/roles", delete(handlers::users::remove_role))
+        .route(
+            "/{id}/permissions",
+            get(handlers::users::get_user_permissions),
+        )
         .route("/{id}/password", post(handlers::users::set_password))
         .route(
             "/{id}/password/generate",
@@ -233,6 +247,58 @@ fn admin_platform_routes() -> Router<AppState> {
         .route("/", post(handlers::tenants::create_platform_admin))
         // List all platform admins
         .route("/", get(handlers::tenants::list_platform_admins))
+        .layer(middleware::from_fn(require_admin_api_key))
+}
+
+/// Admin workspace routes - list all workspaces (admin overview)
+fn admin_workspace_routes() -> Router<AppState> {
+    Router::new()
+        .route("/", get(handlers::workspaces::admin_list_workspaces))
+        .route("/{id}", get(handlers::workspaces::get_workspace))
+        .layer(middleware::from_fn(require_admin_api_key))
+}
+
+/// Admin permission routes - permission registry
+fn admin_permission_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/registry",
+            get(handlers::permissions::get_permission_registry),
+        )
+        .route(
+            "/categories",
+            get(handlers::permissions::get_permission_categories),
+        )
+        .layer(middleware::from_fn(require_admin_api_key))
+}
+
+/// Admin storage connection routes - full CRUD with admin key
+fn admin_storage_connection_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/",
+            post(handlers::storage_connections::create_storage_connection),
+        )
+        .route(
+            "/",
+            get(handlers::storage_connections::list_storage_connections),
+        )
+        .route(
+            "/{id}",
+            get(handlers::storage_connections::get_storage_connection),
+        )
+        .route(
+            "/{id}",
+            put(handlers::storage_connections::update_storage_connection),
+        )
+        .route(
+            "/{id}",
+            delete(handlers::storage_connections::delete_storage_connection),
+        )
+        .route(
+            "/{id}/test",
+            post(handlers::storage_connections::test_storage_connection),
+        )
         .layer(middleware::from_fn(require_admin_api_key))
 }
 
@@ -304,6 +370,27 @@ fn protected_identity_routes(state: AppState) -> Router<AppState> {
         .layer(middleware::from_fn_with_state(state, require_api_key))
 }
 
+/// Protected storage connection routes - for Yekta and other services
+fn protected_storage_connection_routes(state: AppState) -> Router<AppState> {
+    Router::new()
+        // List connections for a tenant
+        .route(
+            "/",
+            get(handlers::storage_connections::list_storage_connections),
+        )
+        // Get connection details (without secrets)
+        .route(
+            "/{id}",
+            get(handlers::storage_connections::get_storage_connection),
+        )
+        // Get connection with credentials (for authorized services like Yekta)
+        .route(
+            "/{id}/credentials",
+            get(handlers::storage_connections::get_storage_connection_credentials),
+        )
+        .layer(middleware::from_fn_with_state(state, require_api_key))
+}
+
 // =============================================================================
 // PUBLIC ROUTES (no auth required)
 // =============================================================================
@@ -314,8 +401,12 @@ fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/validate", post(handlers::auth::validate_credentials))
         .route("/validate-token", post(handlers::auth::validate_token))
-        // Token issuance endpoint (OAuth2 password grant)
+        // Token issuance endpoint (OAuth2 password grant + Azure SSO)
         .route("/token", post(handlers::auth::issue_token))
+        // SSO config — returns client_id + authorize_url (no email needed)
+        .route("/sso-config", get(handlers::auth::sso_config))
+        // SSO discovery — validates a specific email domain has SSO configured
+        .route("/sso-discovery", post(handlers::auth::sso_discovery))
         // User self-registration (for desktop apps like Hormoz)
         .route("/register", post(handlers::auth::register_user))
 }

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::dto::{ApiError, ApiResponse};
 use crate::state::AppState;
-use separ_core::UserId;
+use separ_core::{AuthorizationService, UserId};
 
 // =============================================================================
 // DTOs
@@ -720,6 +720,104 @@ pub async fn generate_password(
             ))
         }
     }
+}
+
+// =============================================================================
+// User Permissions
+// =============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct UserPermissionDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub resource_type: String,
+    pub resource_id: String,
+    pub relation: String,
+    pub granted: bool,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserPermissionsResponse {
+    pub user_id: String,
+    pub permissions: Vec<UserPermissionDto>,
+    pub total: usize,
+}
+
+/// Get all permissions/relationships for a user
+///
+/// GET /api/v1/admin/users/:id/permissions
+///
+/// Queries SpiceDB for all relationships where this user is a subject.
+pub async fn get_user_permissions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<UserPermissionsResponse>, (StatusCode, Json<ApiResponse<()>>)> {
+    info!("Getting permissions for user: {}", id);
+
+    // Read all relationships where this user is the subject
+    let filter = separ_core::RelationshipFilter {
+        subject_type: Some("user".to_string()),
+        subject_id: Some(id.clone()),
+        ..Default::default()
+    };
+
+    let relationships = state
+        .auth_service
+        .read_relationships(&filter)
+        .await
+        .map_err(|e| {
+            warn!("Failed to read user relationships: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(ApiError {
+                        code: "PERMISSIONS_READ_FAILED".to_string(),
+                        message: format!("Failed to read permissions: {}", e),
+                        details: None,
+                    }),
+                }),
+            )
+        })?;
+
+    let permissions: Vec<UserPermissionDto> = relationships
+        .into_iter()
+        .map(|r| {
+            let perm_id = format!("{}:{}:{}", r.resource.resource_type, r.resource.id, r.relation);
+            let name = format!(
+                "{} {} on {}",
+                r.relation,
+                r.resource.resource_type,
+                r.resource.id
+            );
+            UserPermissionDto {
+                id: perm_id,
+                name,
+                description: format!(
+                    "{} relationship on {}:{}",
+                    r.relation, r.resource.resource_type, r.resource.id
+                ),
+                resource_type: r.resource.resource_type,
+                resource_id: r.resource.id,
+                relation: r.relation,
+                granted: true,
+                source: "spicedb".to_string(),
+                resource_name: None,
+            }
+        })
+        .collect();
+
+    let total = permissions.len();
+    Ok(Json(UserPermissionsResponse {
+        user_id: id,
+        permissions,
+        total,
+    }))
 }
 
 // =============================================================================

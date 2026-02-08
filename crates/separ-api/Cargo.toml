@@ -28,9 +28,7 @@ hex = "0.4"
 
 # Rate limiting
 governor = { workspace = true }
-tower_governor = { workspace = true }
-
-# Caching for permission checks
+tower_governor = { workspace = true }# Caching for permission checks
 moka = { workspace = true }
 
 # Request ID tracing
@@ -39,3 +37,7 @@ http = { workspace = true }
 # Input validation
 regex = "1"
 once_cell = "1"
+
+# Azure SSO token validation
+reqwest = { version = "0.12", features = ["json"] }
+jsonwebtoken = { workspace = true }

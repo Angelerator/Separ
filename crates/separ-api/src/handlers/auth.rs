@@ -639,15 +639,23 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
 // Token Issuance (OAuth2 Password Grant)
 // =============================================================================
 
-/// Request for token issuance (OAuth2 password grant)
+/// Request for token issuance (OAuth2 password grant + Azure SSO)
 #[derive(Debug, Deserialize)]
 pub struct TokenRequest {
-    /// Grant type - currently only "password" is supported
+    /// Grant type: "password" or "azure_sso"
     pub grant_type: String,
-    /// Username (email) for authentication
-    pub username: String,
-    /// Password for authentication
-    pub password: String,
+    /// Username (email) for password grant
+    #[serde(default)]
+    pub username: Option<String>,
+    /// Password for password grant
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Azure ID token for azure_sso grant
+    #[serde(default)]
+    pub id_token: Option<String>,
+    /// Nonce for OIDC replay protection (must match nonce in id_token)
+    #[serde(default)]
+    pub nonce: Option<String>,
     /// Optional tenant hint
     #[serde(default)]
     pub tenant_hint: Option<String>,
@@ -670,46 +678,64 @@ pub struct TokenResponse {
     pub tenant_id: String,
 }
 
-/// Issue JWT tokens after password validation
+/// Issue JWT tokens after password validation or Azure SSO
 ///
 /// POST /api/v1/auth/token
 ///
-/// This endpoint implements OAuth2 password grant for issuing JWT tokens.
-/// Hormoz (desktop app) uses this to authenticate users and get tokens for Yekta.
+/// Supported grant types:
+/// - "password": OAuth2 password grant (email + password)
+/// - "azure_sso": Azure Entra ID SSO (id_token from Azure OIDC/PKCE flow)
 pub async fn issue_token(
     State(state): State<AppState>,
     Json(request): Json<TokenRequest>,
 ) -> Result<Json<TokenResponse>, (StatusCode, Json<AuthError>)> {
-    // Only support password grant for now
-    if request.grant_type != "password" {
-        return Err((
+    match request.grant_type.as_str() {
+        "password" => issue_token_password(&state, &request).await,
+        "azure_sso" => issue_token_azure_sso(&state, &request).await,
+        _ => Err((
             StatusCode::BAD_REQUEST,
             Json(AuthError {
                 error: "unsupported_grant_type".to_string(),
-                message: "Only 'password' grant type is supported".to_string(),
+                message: format!(
+                    "Unsupported grant type '{}'. Use 'password' or 'azure_sso'.",
+                    request.grant_type
+                ),
+            }),
+        )),
+    }
+}
+
+/// Issue tokens via password grant
+async fn issue_token_password(
+    state: &AppState,
+    request: &TokenRequest,
+) -> Result<Json<TokenResponse>, (StatusCode, Json<AuthError>)> {
+    let username = request.username.as_deref().unwrap_or("");
+    let password = request.password.as_deref().unwrap_or("");
+
+    if username.is_empty() || password.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AuthError {
+                error: "invalid_request".to_string(),
+                message: "username and password are required for password grant".to_string(),
             }),
         ));
     }
 
-    debug!(
-        username = %request.username,
-        "Processing token request"
-    );
+    debug!(username = %username, "Processing password token request");
 
-    // Validate credentials using existing password validation logic
     let validate_req = ValidateRequest {
-        username: request.username.clone(),
-        credential: request.password.clone(),
+        username: username.to_string(),
+        credential: password.to_string(),
         credential_type: "password".to_string(),
         tenant_hint: request.tenant_hint.clone(),
         application: None,
         client_ip: None,
     };
 
-    // Call the internal validation function
-    let validated = validate_password_internal(&state, &validate_req).await?;
+    let validated = validate_password_internal(state, &validate_req).await?;
 
-    // Issue JWT tokens using the JwtService
     let tokens = state
         .jwt_service
         .generate_tokens(
@@ -734,7 +760,7 @@ pub async fn issue_token(
     info!(
         user_id = %validated.user_id,
         tenant_id = %validated.tenant_id,
-        "Token issued successfully"
+        "Token issued via password grant"
     );
 
     Ok(Json(TokenResponse {
@@ -745,6 +771,641 @@ pub async fn issue_token(
         user_id: validated.user_id,
         tenant_id: validated.tenant_id,
     }))
+}
+
+/// SSO Discovery response
+#[derive(Debug, Serialize)]
+pub struct SsoDiscoveryResponse {
+    pub sso_required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorize_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_name: Option<String>,
+}
+
+/// SSO public config response (no secrets)
+#[derive(Debug, Serialize)]
+pub struct SsoConfigResponse {
+    pub sso_enabled: bool,
+    /// The multi-tenant app's client ID (public value)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Default authorize URL for direct SSO (no discovery needed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorize_url: Option<String>,
+}
+
+/// Returns the SSO configuration for the frontend.
+/// No email required — just tells the client how to initiate SSO.
+///
+/// GET /api/v1/auth/sso-config
+pub async fn sso_config(
+    State(state): State<AppState>,
+) -> Json<SsoConfigResponse> {
+    if state.azure_sso.enabled && !state.azure_sso.app_client_id.is_empty() {
+        Json(SsoConfigResponse {
+            sso_enabled: true,
+            client_id: Some(state.azure_sso.app_client_id.clone()),
+            authorize_url: Some("https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize".to_string()),
+        })
+    } else {
+        Json(SsoConfigResponse {
+            sso_enabled: false,
+            client_id: None,
+            authorize_url: None,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SsoDiscoveryRequest {
+    pub email: String,
+}
+
+/// SSO Discovery endpoint — determines if an email domain has SSO configured.
+/// Used by the frontend when the user has entered an email.
+///
+/// POST /api/v1/auth/sso-discovery
+pub async fn sso_discovery(
+    State(state): State<AppState>,
+    Json(request): Json<SsoDiscoveryRequest>,
+) -> Result<Json<SsoDiscoveryResponse>, (StatusCode, Json<AuthError>)> {
+    if !state.azure_sso.enabled {
+        return Ok(Json(SsoDiscoveryResponse {
+            sso_required: false,
+            provider_type: None,
+            authorize_url: None,
+            client_id: None,
+            provider_name: None,
+        }));
+    }
+
+    let email = request.email.trim().to_lowercase();
+    let domain = email.split('@').nth(1).unwrap_or("");
+    if domain.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AuthError {
+                error: "invalid_email".to_string(),
+                message: "Invalid email address".to_string(),
+            }),
+        ));
+    }
+
+    // Look up an enabled identity provider whose domains array contains this domain
+    let provider: Option<(String, String, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT provider_type, id::text, display_name
+        FROM identity_providers
+        WHERE $1 = ANY(domains)
+          AND enabled = true
+        ORDER BY priority ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(domain)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| {
+        warn!(error = %e, "Database error during SSO discovery");
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+            error: "database_error".to_string(),
+            message: "Internal error during SSO discovery".to_string(),
+        }))
+    })?;
+
+    match provider {
+        Some((provider_type, _provider_id, display_name)) if provider_type == "azure_ad" => {
+            // Use /organizations endpoint (restricts to work accounts, safer than /common)
+            let authorize_url = "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize".to_string();
+            Ok(Json(SsoDiscoveryResponse {
+                sso_required: true,
+                provider_type: Some(provider_type),
+                authorize_url: Some(authorize_url),
+                client_id: Some(state.azure_sso.app_client_id.clone()),
+                provider_name: display_name.or(Some("Microsoft SSO".to_string())),
+            }))
+        }
+        Some((provider_type, _provider_id, display_name)) => {
+            // Future: handle okta, google, generic_oidc, etc.
+            Ok(Json(SsoDiscoveryResponse {
+                sso_required: true,
+                provider_type: Some(provider_type),
+                authorize_url: None,
+                client_id: None,
+                provider_name: display_name,
+            }))
+        }
+        None => Ok(Json(SsoDiscoveryResponse {
+            sso_required: false,
+            provider_type: None,
+            authorize_url: None,
+            client_id: None,
+            provider_name: None,
+        })),
+    }
+}
+
+/// Issue tokens via Azure SSO (Entra ID) — multi-tenant
+///
+/// Flow:
+/// 1. Client obtains Azure ID token via PKCE flow (no secret needed on client)
+/// 2. Client sends ID token to this endpoint
+/// 3. Separ extracts `tid` claim → looks up registered identity provider in DB
+/// 4. Separ validates the ID token signature via per-tenant JWKS cache
+/// 5. Separ JIT provisions or links user by email
+/// 6. Separ issues its own JWT tokens
+async fn issue_token_azure_sso(
+    state: &AppState,
+    request: &TokenRequest,
+) -> Result<Json<TokenResponse>, (StatusCode, Json<AuthError>)> {
+    if !state.azure_sso.enabled {
+        return Err((StatusCode::BAD_REQUEST, Json(AuthError {
+            error: "sso_disabled".to_string(),
+            message: "Azure SSO is not enabled on this server".to_string(),
+        })));
+    }
+
+    let id_token = request.id_token.as_deref().unwrap_or("");
+    if id_token.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(AuthError {
+            error: "invalid_request".to_string(),
+            message: "id_token is required for azure_sso grant".to_string(),
+        })));
+    }
+
+    debug!("Processing Azure SSO token request");
+
+    // =========================================================================
+    // Step 1: Pre-parse the ID token to extract tid (before full validation)
+    // =========================================================================
+    let pre_claims = pre_parse_jwt_claims(id_token).map_err(|e| {
+        (StatusCode::BAD_REQUEST, Json(AuthError {
+            error: "invalid_id_token".to_string(),
+            message: format!("Cannot parse ID token: {}", e),
+        }))
+    })?;
+
+    let token_tid = pre_claims.get("tid").and_then(|v| v.as_str()).unwrap_or("");
+    if token_tid.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(AuthError {
+            error: "invalid_id_token".to_string(),
+            message: "ID token missing 'tid' (tenant ID) claim".to_string(),
+        })));
+    }
+
+    // =========================================================================
+    // Step 1b: Look up the identity provider by Azure tenant ID in DB
+    // =========================================================================
+    let provider_row: Option<(uuid::Uuid, uuid::Uuid)> = sqlx::query_as(
+        r#"
+        SELECT id, tenant_id
+        FROM identity_providers
+        WHERE provider_type = 'azure_ad'
+          AND enabled = true
+          AND (
+            config->>'azure_tenant_id' = $1
+            OR $1 = ANY(domains)
+          )
+        LIMIT 1
+        "#,
+    )
+    .bind(token_tid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| {
+        warn!(error = %e, "Database error looking up identity provider");
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+            error: "database_error".to_string(),
+            message: "Internal error during authentication".to_string(),
+        }))
+    })?;
+
+    let (provider_id, provider_tenant_id) = provider_row.ok_or_else(|| {
+        warn!(tid = %token_tid, "No registered identity provider for Azure tenant");
+        (StatusCode::UNAUTHORIZED, Json(AuthError {
+            error: "unknown_tenant".to_string(),
+            message: "Your organization is not registered for SSO. Contact your administrator.".to_string(),
+        }))
+    })?;
+
+    // =========================================================================
+    // Step 1c: Validate the ID token with per-tenant JWKS cache
+    // =========================================================================
+    let azure_claims = validate_azure_id_token_cached(
+        id_token,
+        token_tid,
+        &state.azure_sso.app_client_id,
+        &state.jwks_cache,
+    )
+    .await
+    .map_err(|e| {
+        warn!(error = %e, "Azure ID token validation failed");
+        (StatusCode::UNAUTHORIZED, Json(AuthError {
+            error: "invalid_id_token".to_string(),
+            message: format!("Azure ID token validation failed: {}", e),
+        }))
+    })?;
+
+    // =========================================================================
+    // Step 1d: Validate nonce if provided (OIDC replay protection)
+    // =========================================================================
+    if let Some(expected_nonce) = &request.nonce {
+        let token_nonce = azure_claims
+            .get("nonce")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if token_nonce != expected_nonce.as_str() {
+            warn!("Nonce mismatch: possible token replay attack");
+            return Err((StatusCode::UNAUTHORIZED, Json(AuthError {
+                error: "nonce_mismatch".to_string(),
+                message: "ID token nonce does not match expected value".to_string(),
+            })));
+        }
+    }
+
+    // =========================================================================
+    // Step 1e: Extract user info from Azure claims
+    // =========================================================================
+    let azure_oid = azure_claims
+        .get("oid")
+        .or_else(|| azure_claims.get("sub"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let azure_email = azure_claims
+        .get("email")
+        .or_else(|| azure_claims.get("upn"))
+        .or_else(|| azure_claims.get("preferred_username"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let azure_name = azure_claims
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if azure_oid.is_empty() || azure_email.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(AuthError {
+            error: "incomplete_claims".to_string(),
+            message: "Azure ID token missing required claims (oid/sub, email/upn)".to_string(),
+        })));
+    }
+
+    // Verify email domain matches the provider's registered domains (defense-in-depth)
+    let email_domain = azure_email.split('@').nth(1).unwrap_or("");
+    let domain_ok: bool = sqlx::query_scalar(
+        "SELECT $1 = ANY(domains) FROM identity_providers WHERE id = $2",
+    )
+    .bind(email_domain)
+    .bind(provider_id)
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None)
+    .unwrap_or(false);
+
+    if !domain_ok {
+        warn!(
+            email_domain = %email_domain,
+            provider_id = %provider_id,
+            "Email domain does not match registered provider domains"
+        );
+        return Err((StatusCode::UNAUTHORIZED, Json(AuthError {
+            error: "domain_mismatch".to_string(),
+            message: "Your email domain is not authorized for this SSO provider".to_string(),
+        })));
+    }
+
+    info!(
+        azure_oid = %azure_oid,
+        azure_email = %azure_email,
+        azure_name = %azure_name,
+        provider_id = %provider_id,
+        "Azure ID token validated (multi-tenant)"
+    );
+
+    // =========================================================================
+    // Step 2: Find or create Separ user (JIT provisioning + account linking)
+    // =========================================================================
+    let existing_by_oid: Option<(String,)> = sqlx::query_as(
+        "SELECT separ_user_id::text FROM identity_user_mappings WHERE external_id = $1 LIMIT 1",
+    )
+    .bind(&azure_oid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| {
+        warn!(error = %e, "Database error looking up identity mapping");
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+            error: "database_error".to_string(),
+            message: "Internal error during authentication".to_string(),
+        }))
+    })?;
+
+    let (user_id, tenant_id) = if let Some((existing_user_id,)) = existing_by_oid {
+        info!(user_id = %existing_user_id, "Found existing SSO-linked user");
+        let tenant_id: String = sqlx::query_scalar(
+            "SELECT COALESCE(tenant_id::text, $2) FROM users WHERE id = $1::uuid",
+        )
+        .bind(uuid::Uuid::parse_str(&existing_user_id).unwrap())
+        .bind(provider_tenant_id.to_string())
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, "Database error fetching user tenant");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+                error: "database_error".to_string(),
+                message: "Internal error during authentication".to_string(),
+            }))
+        })?
+        .unwrap_or_else(|| provider_tenant_id.to_string());
+
+        (existing_user_id, tenant_id)
+    } else {
+        // Try email-based linking
+        let existing_by_email: Option<(String, Option<uuid::Uuid>)> = sqlx::query_as(
+            "SELECT id::text, tenant_id FROM users WHERE LOWER(email) = $1 LIMIT 1",
+        )
+        .bind(&azure_email)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, "Database error looking up user by email");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+                error: "database_error".to_string(),
+                message: "Internal error during authentication".to_string(),
+            }))
+        })?;
+
+        if let Some((existing_user_id, tenant_uuid)) = existing_by_email {
+            info!(user_id = %existing_user_id, azure_oid = %azure_oid, "Linking existing user to Azure SSO by email");
+            let effective_tenant = tenant_uuid.unwrap_or(provider_tenant_id);
+
+            // Assign tenant if user has none
+            if tenant_uuid.is_none() {
+                let _ = sqlx::query("UPDATE users SET tenant_id = $1 WHERE id = $2::uuid")
+                    .bind(effective_tenant)
+                    .bind(uuid::Uuid::parse_str(&existing_user_id).unwrap())
+                    .execute(&state.db_pool)
+                    .await;
+            }
+
+            sqlx::query(
+                r#"INSERT INTO identity_user_mappings (tenant_id, provider_id, external_id, separ_user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4::uuid, NOW(), NOW()) ON CONFLICT DO NOTHING"#,
+            )
+            .bind(effective_tenant)
+            .bind(provider_id)
+            .bind(&azure_oid)
+            .bind(uuid::Uuid::parse_str(&existing_user_id).unwrap())
+            .execute(&state.db_pool)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Failed to create identity mapping");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+                    error: "database_error".to_string(),
+                    message: "Failed to link Azure identity".to_string(),
+                }))
+            })?;
+
+            (existing_user_id, effective_tenant.to_string())
+        } else {
+            // JIT provision new user
+            info!(azure_email = %azure_email, azure_oid = %azure_oid, "JIT provisioning new user from Azure SSO");
+            let new_user_id = uuid::Uuid::new_v4();
+            let new_user_id_str = new_user_id.to_string();
+
+            sqlx::query(
+                r#"INSERT INTO users (id, email, display_name, tenant_id, status, email_verified, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, 'active', true, NOW(), NOW())"#,
+            )
+            .bind(new_user_id)
+            .bind(&azure_email)
+            .bind(&azure_name)
+            .bind(provider_tenant_id)
+            .execute(&state.db_pool)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Failed to create SSO user");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+                    error: "user_creation_failed".to_string(),
+                    message: "Failed to create user from SSO".to_string(),
+                }))
+            })?;
+
+            sqlx::query(
+                r#"INSERT INTO identity_user_mappings (tenant_id, provider_id, external_id, separ_user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, NOW(), NOW())"#,
+            )
+            .bind(provider_tenant_id)
+            .bind(provider_id)
+            .bind(&azure_oid)
+            .bind(new_user_id)
+            .execute(&state.db_pool)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Failed to create identity mapping");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+                    error: "database_error".to_string(),
+                    message: "Failed to create identity mapping".to_string(),
+                }))
+            })?;
+
+            // Create personal workspace
+            let workspace_id = uuid::Uuid::new_v4();
+            let workspace_slug = format!("personal-{}", new_user_id_str.chars().take(8).collect::<String>());
+            let _ = sqlx::query(
+                r#"INSERT INTO workspaces (id, tenant_id, owner_user_id, name, slug, description, workspace_type, created_at, updated_at)
+                   VALUES ($1, NULL, $2, 'My Workspace', $3, 'Personal workspace', 'personal', NOW(), NOW())"#,
+            )
+            .bind(workspace_id).bind(new_user_id).bind(&workspace_slug)
+            .execute(&state.db_pool).await;
+
+            let _ = sqlx::query(
+                "INSERT INTO workspace_members (workspace_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', NOW())",
+            )
+            .bind(workspace_id).bind(new_user_id)
+            .execute(&state.db_pool).await;
+
+            // SpiceDB relationships (non-fatal)
+            let _ = state.auth_service.client()
+                .write_relationship("workspace", &workspace_id.to_string(), "owner", "user", &new_user_id_str)
+                .await;
+
+            (new_user_id_str, provider_tenant_id.to_string())
+        }
+    };
+
+    // =========================================================================
+    // Step 3: Issue Separ JWT tokens
+    // =========================================================================
+    let has_platform_access = state.auth_service.client()
+        .check_permission("platform", "main", "admin", "user", &user_id)
+        .await.unwrap_or(false);
+
+    let permissions = if has_platform_access {
+        vec!["read".to_string(), "write".to_string(), "query".to_string(), "admin".to_string()]
+    } else {
+        vec!["read".to_string(), "query".to_string()]
+    };
+    let groups = if has_platform_access { vec!["admins".to_string()] } else { vec![] };
+
+    let tokens = state.jwt_service.generate_tokens(
+        &user_id, &tenant_id, Some(&azure_email),
+        if azure_name.is_empty() { None } else { Some(&azure_name) },
+        groups, permissions,
+    ).map_err(|e| {
+        warn!(error = %e, "Failed to generate tokens for SSO user");
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError {
+            error: "token_generation_failed".to_string(),
+            message: "Failed to generate authentication tokens".to_string(),
+        }))
+    })?;
+
+    info!(user_id = %user_id, azure_oid = %azure_oid, "Token issued via Azure SSO");
+    Ok(Json(TokenResponse {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: tokens.token_type,
+        expires_in: tokens.expires_in,
+        user_id,
+        tenant_id,
+    }))
+}
+
+/// Pre-parse JWT claims without validation (to extract tid for provider lookup)
+fn pre_parse_jwt_claims(token: &str) -> Result<serde_json::Value, String> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err("Invalid JWT format".to_string());
+    }
+    let payload_bytes = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .map_err(|e| format!("Invalid JWT payload encoding: {}", e))?;
+    serde_json::from_slice(&payload_bytes)
+        .map_err(|e| format!("Invalid JWT payload JSON: {}", e))
+}
+
+// =============================================================================
+// Per-Tenant JWKS Cache
+// =============================================================================
+
+/// Per-tenant JWKS cache: azure_tenant_id -> JwksCacheEntry
+pub type PerTenantJwksCache = std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, JwksCacheEntry>>>;
+
+pub struct JwksCacheEntry {
+    pub keys: std::collections::HashMap<String, (String, String)>,
+    pub fetched_at: std::time::Instant,
+}
+
+impl JwksCacheEntry {
+    pub fn is_stale(&self) -> bool {
+        self.fetched_at.elapsed() > std::time::Duration::from_secs(3600)
+    }
+}
+
+/// Fetch JWKS from Azure for a specific tenant and update the per-tenant cache
+async fn refresh_jwks_for_tenant(
+    azure_tenant_id: &str,
+    cache: &PerTenantJwksCache,
+) -> Result<(), String> {
+    let jwks_url = format!(
+        "https://login.microsoftonline.com/{}/discovery/v2.0/keys",
+        azure_tenant_id
+    );
+    debug!("Fetching Azure JWKS from {}", jwks_url);
+
+    let jwks_response = reqwest::get(&jwks_url)
+        .await
+        .map_err(|e| format!("Failed to fetch Azure JWKS: {}", e))?;
+    let jwks: serde_json::Value = jwks_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Azure JWKS: {}", e))?;
+
+    let keys = jwks.get("keys").and_then(|v| v.as_array())
+        .ok_or("JWKS missing 'keys' array")?;
+
+    let mut key_map = std::collections::HashMap::new();
+    for key in keys {
+        if let (Some(kid), Some(n), Some(e)) = (
+            key.get("kid").and_then(|v| v.as_str()),
+            key.get("n").and_then(|v| v.as_str()),
+            key.get("e").and_then(|v| v.as_str()),
+        ) {
+            key_map.insert(kid.to_string(), (n.to_string(), e.to_string()));
+        }
+    }
+
+    let mut cache_map = cache.write().await;
+    cache_map.insert(azure_tenant_id.to_string(), JwksCacheEntry {
+        keys: key_map,
+        fetched_at: std::time::Instant::now(),
+    });
+    debug!("Azure JWKS cache updated for tenant {}", azure_tenant_id);
+
+    Ok(())
+}
+
+/// Validate an Azure AD ID token with per-tenant JWKS caching
+async fn validate_azure_id_token_cached(
+    id_token: &str,
+    azure_tenant_id: &str,
+    app_client_id: &str,
+    jwks_cache: &PerTenantJwksCache,
+) -> Result<serde_json::Value, String> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    let parts: Vec<&str> = id_token.split('.').collect();
+    if parts.len() != 3 {
+        return Err("Invalid JWT format".to_string());
+    }
+
+    let header_bytes = URL_SAFE_NO_PAD
+        .decode(parts[0])
+        .map_err(|e| format!("Invalid JWT header encoding: {}", e))?;
+    let header: serde_json::Value = serde_json::from_slice(&header_bytes)
+        .map_err(|e| format!("Invalid JWT header JSON: {}", e))?;
+    let kid = header.get("kid").and_then(|v| v.as_str())
+        .ok_or("JWT header missing 'kid'")?.to_string();
+
+    // Try to get key from per-tenant cache
+    let rsa_components = {
+        let cache = jwks_cache.read().await;
+        cache.get(azure_tenant_id).and_then(|entry| {
+            if !entry.is_stale() { entry.keys.get(&kid).cloned() } else { None }
+        })
+    };
+
+    let (n, e) = if let Some(components) = rsa_components {
+        components
+    } else {
+        refresh_jwks_for_tenant(azure_tenant_id, jwks_cache).await?;
+        let cache = jwks_cache.read().await;
+        cache.get(azure_tenant_id)
+            .and_then(|entry| entry.keys.get(&kid).cloned())
+            .ok_or_else(|| format!("No JWKS key found for kid '{}' (tenant {})", kid, azure_tenant_id))?
+    };
+
+    let decoding_key = jsonwebtoken::DecodingKey::from_rsa_components(&n, &e)
+        .map_err(|e| format!("Failed to create decoding key: {}", e))?;
+
+    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
+    validation.set_issuer(&[format!("https://login.microsoftonline.com/{}/v2.0", azure_tenant_id)]);
+    validation.set_audience(&[app_client_id]);
+    validation.validate_exp = true;
+    validation.validate_nbf = true;
+    validation.leeway = 120;
+
+    let token_data = jsonwebtoken::decode::<serde_json::Value>(id_token, &decoding_key, &validation)
+        .map_err(|e| format!("Token validation failed: {}", e))?;
+
+    Ok(token_data.claims)
 }
 
 /// JWKS endpoint for external services to verify tokens

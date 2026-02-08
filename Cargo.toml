@@ -74,6 +74,9 @@ secrecy = { version = "0.10", features = ["serde"] }
 # URL encoding
 urlencoding = "2"
 
+# Hex encoding
+hex = "0.4"
+
 # Rate limiting
 governor = "0.7"
 tower_governor = "0.5"

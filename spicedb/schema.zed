@@ -157,3 +157,19 @@ definition yekta_resource {
     permission write = owner + editor + tenant->manage
     permission read = owner + editor + viewer + tenant->view
 }
+
+definition storage_connection {
+    relation tenant: tenant
+    relation owner: user | service_account
+    relation admin: user | service_account | group#member
+    relation user: user | service_account | group#member
+    
+    // Manage: full control (create, update, delete)
+    permission manage = owner + admin + tenant->manage
+    // Use: can use this connection for data access
+    permission use = owner + admin + user + tenant->view
+    // View: can see connection info (but not secrets)
+    permission view = owner + admin + user + tenant->view
+    // Get credentials: retrieve decrypted secrets (for authorized services)
+    permission get_credentials = owner + admin + tenant->manage
+}

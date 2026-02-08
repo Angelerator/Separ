@@ -5,6 +5,7 @@ option go_package = "github.com/authzed/authzed-go/proto/authzed/api/v1";
 
 import "authzed/api/v1/core.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 
 service PermissionsService {
   rpc ReadRelationships(ReadRelationshipsRequest) returns (stream ReadRelationshipsResponse);
@@ -15,6 +16,8 @@ service PermissionsService {
   rpc ExpandPermissionTree(ExpandPermissionTreeRequest) returns (ExpandPermissionTreeResponse);
   rpc LookupResources(LookupResourcesRequest) returns (stream LookupResourcesResponse);
   rpc LookupSubjects(LookupSubjectsRequest) returns (stream LookupSubjectsResponse);
+  rpc ImportBulkRelationships(stream ImportBulkRelationshipsRequest) returns (ImportBulkRelationshipsResponse);
+  rpc ExportBulkRelationships(ExportBulkRelationshipsRequest) returns (stream ExportBulkRelationshipsResponse);
 }
 
 // Consistency levels
@@ -25,6 +28,26 @@ message Consistency {
     ZedToken at_exact_snapshot = 3;
     bool fully_consistent = 4;
   }
+}
+
+// RelationshipFilter is used to filter relationships.
+message RelationshipFilter {
+  string resource_type = 1;
+  string optional_resource_id = 2;
+  string optional_relation = 3;
+  SubjectFilter optional_subject_filter = 4;
+  string optional_resource_id_prefix = 5;
+}
+
+// SubjectFilter is used to filter subjects in relationship queries.
+message SubjectFilter {
+  message RelationFilter {
+    string relation = 1;
+  }
+
+  string subject_type = 1;
+  string optional_subject_id = 2;
+  RelationFilter optional_relation = 3;
 }
 
 // ReadRelationships
@@ -41,33 +64,22 @@ message ReadRelationshipsResponse {
   Cursor after_result_cursor = 3;
 }
 
-// WriteRelationships
-message WriteRelationshipsRequest {
-  repeated RelationshipUpdate updates = 1;
-  repeated Precondition optional_preconditions = 2;
-}
-
-message RelationshipUpdate {
-  Operation operation = 1;
-  Relationship relationship = 2;
-
-  enum Operation {
-    OPERATION_UNSPECIFIED = 0;
-    OPERATION_CREATE = 1;
-    OPERATION_TOUCH = 2;
-    OPERATION_DELETE = 3;
-  }
-}
-
+// Precondition
 message Precondition {
-  Operation operation = 1;
-  RelationshipFilter filter = 2;
-
   enum Operation {
     OPERATION_UNSPECIFIED = 0;
     OPERATION_MUST_NOT_MATCH = 1;
     OPERATION_MUST_MATCH = 2;
   }
+  Operation operation = 1;
+  RelationshipFilter filter = 2;
+}
+
+// WriteRelationships
+message WriteRelationshipsRequest {
+  repeated RelationshipUpdate updates = 1;
+  repeated Precondition optional_preconditions = 2;
+  google.protobuf.Struct optional_transaction_metadata = 3;
 }
 
 message WriteRelationshipsResponse {
@@ -78,19 +90,20 @@ message WriteRelationshipsResponse {
 message DeleteRelationshipsRequest {
   RelationshipFilter relationship_filter = 1;
   repeated Precondition optional_preconditions = 2;
-  bool optional_allow_partial_deletions = 3;
-  uint32 optional_limit = 4;
+  uint32 optional_limit = 3;
+  bool optional_allow_partial_deletions = 4;
+  google.protobuf.Struct optional_transaction_metadata = 5;
 }
 
 message DeleteRelationshipsResponse {
-  ZedToken deleted_at = 1;
-  DeletionProgress deletion_progress = 2;
-
   enum DeletionProgress {
     DELETION_PROGRESS_UNSPECIFIED = 0;
     DELETION_PROGRESS_COMPLETE = 1;
     DELETION_PROGRESS_PARTIAL = 2;
   }
+  ZedToken deleted_at = 1;
+  DeletionProgress deletion_progress = 2;
+  uint64 relationships_deleted_count = 3;
 }
 
 // CheckPermission
@@ -104,21 +117,17 @@ message CheckPermissionRequest {
 }
 
 message CheckPermissionResponse {
-  ZedToken checked_at = 1;
-  Permissionship permissionship = 2;
-  PartialCaveatInfo partial_caveat_info = 3;
-  DebugInformation debug_trace = 4;
-
   enum Permissionship {
     PERMISSIONSHIP_UNSPECIFIED = 0;
     PERMISSIONSHIP_NO_PERMISSION = 1;
     PERMISSIONSHIP_HAS_PERMISSION = 2;
     PERMISSIONSHIP_CONDITIONAL_PERMISSION = 3;
   }
-}
-
-message PartialCaveatInfo {
-  repeated string missing_required_context = 1;
+  ZedToken checked_at = 1;
+  Permissionship permissionship = 2;
+  PartialCaveatInfo partial_caveat_info = 3;
+  DebugInformation debug_trace = 4;
+  google.protobuf.Timestamp optional_expires_at = 5;
 }
 
 message DebugInformation {
@@ -127,6 +136,11 @@ message DebugInformation {
 }
 
 message CheckDebugTrace {
+  enum PermissionType {
+    PERMISSION_TYPE_UNSPECIFIED = 0;
+    PERMISSION_TYPE_RELATION = 1;
+    PERMISSION_TYPE_PERMISSION = 2;
+  }
   ObjectReference resource = 1;
   string permission = 2;
   PermissionType permission_type = 3;
@@ -138,12 +152,6 @@ message CheckDebugTrace {
     bool was_cached_result = 8;
     SubProblems sub_problems = 9;
   }
-
-  enum PermissionType {
-    PERMISSION_TYPE_UNSPECIFIED = 0;
-    PERMISSION_TYPE_RELATION = 1;
-    PERMISSION_TYPE_PERMISSION = 2;
-  }
 }
 
 message SubProblems {
@@ -151,12 +159,6 @@ message SubProblems {
 }
 
 message CaveatEvalInfo {
-  string expression = 1;
-  Result result = 2;
-  google.protobuf.Struct context = 3;
-  google.protobuf.Struct partial_caveat_info = 4;
-  string caveat_name = 5;
-
   enum Result {
     RESULT_UNSPECIFIED = 0;
     RESULT_UNEVALUATED = 1;
@@ -164,12 +166,18 @@ message CaveatEvalInfo {
     RESULT_TRUE = 3;
     RESULT_MISSING_SOME_CONTEXT = 4;
   }
+  string expression = 1;
+  Result result = 2;
+  google.protobuf.Struct context = 3;
+  google.protobuf.Struct partial_caveat_info = 4;
+  string caveat_name = 5;
 }
 
 // CheckBulkPermissions
 message CheckBulkPermissionsRequest {
   Consistency consistency = 1;
   repeated CheckBulkPermissionsRequestItem items = 2;
+  bool with_tracing = 3;
 }
 
 message CheckBulkPermissionsRequestItem {
@@ -195,6 +203,7 @@ message CheckBulkPermissionsPair {
 message CheckBulkPermissionsResponseItem {
   CheckPermissionResponse.Permissionship permissionship = 1;
   PartialCaveatInfo partial_caveat_info = 2;
+  DebugInformation debug_trace = 3;
 }
 
 message CheckBulkPermissionsError {
@@ -214,31 +223,6 @@ message ExpandPermissionTreeResponse {
   PermissionRelationshipTree tree_root = 2;
 }
 
-message PermissionRelationshipTree {
-  oneof tree_type {
-    AlgebraicSubjectSet intermediate = 1;
-    DirectSubjectSet leaf = 2;
-  }
-  ObjectReference expanded_object = 3;
-  string expanded_relation = 4;
-}
-
-message AlgebraicSubjectSet {
-  Operation operation = 1;
-  repeated PermissionRelationshipTree children = 2;
-
-  enum Operation {
-    OPERATION_UNSPECIFIED = 0;
-    OPERATION_UNION = 1;
-    OPERATION_INTERSECTION = 2;
-    OPERATION_EXCLUSION = 3;
-  }
-}
-
-message DirectSubjectSet {
-  repeated SubjectReference subjects = 1;
-}
-
 // LookupResources
 message LookupResourcesRequest {
   Consistency consistency = 1;
@@ -250,6 +234,12 @@ message LookupResourcesRequest {
   Cursor optional_cursor = 7;
 }
 
+enum LookupPermissionship {
+  LOOKUP_PERMISSIONSHIP_UNSPECIFIED = 0;
+  LOOKUP_PERMISSIONSHIP_HAS_PERMISSION = 1;
+  LOOKUP_PERMISSIONSHIP_CONDITIONAL_PERMISSION = 2;
+}
+
 message LookupResourcesResponse {
   ZedToken looked_up_at = 1;
   string resource_object_id = 2;
@@ -258,36 +248,34 @@ message LookupResourcesResponse {
   Cursor after_result_cursor = 5;
 }
 
-enum LookupPermissionship {
-  LOOKUP_PERMISSIONSHIP_UNSPECIFIED = 0;
-  LOOKUP_PERMISSIONSHIP_HAS_PERMISSION = 1;
-  LOOKUP_PERMISSIONSHIP_CONDITIONAL_PERMISSION = 2;
-}
-
 // LookupSubjects
 message LookupSubjectsRequest {
+  enum WildcardOption {
+    WILDCARD_OPTION_UNSPECIFIED = 0;
+    WILDCARD_OPTION_INCLUDE_WILDCARDS = 1;
+    WILDCARD_OPTION_EXCLUDE_WILDCARDS = 2;
+  }
+
   Consistency consistency = 1;
   ObjectReference resource = 2;
   string permission = 3;
   string subject_object_type = 4;
   string optional_subject_relation = 5;
   google.protobuf.Struct context = 6;
-  ResolvedSubject optional_concrete_limit = 7;
+  uint32 optional_concrete_limit = 7;
   Cursor optional_cursor = 8;
   WildcardOption wildcard_option = 9;
 }
 
-enum WildcardOption {
-  WILDCARD_OPTION_UNSPECIFIED = 0;
-  WILDCARD_OPTION_INCLUDE_WILDCARDS = 1;
-  WILDCARD_OPTION_EXCLUDE_WILDCARDS = 2;
-}
-
 message LookupSubjectsResponse {
   ZedToken looked_up_at = 1;
-  ResolvedSubject subject = 2;
-  repeated string excluded_subjects = 3;
-  Cursor after_result_cursor = 4;
+  string subject_object_id = 2;
+  repeated string excluded_subject_ids = 3;
+  LookupPermissionship permissionship = 4;
+  PartialCaveatInfo partial_caveat_info = 5;
+  ResolvedSubject subject = 6;
+  repeated ResolvedSubject excluded_subjects = 7;
+  Cursor after_result_cursor = 8;
 }
 
 message ResolvedSubject {
@@ -296,3 +284,24 @@ message ResolvedSubject {
   PartialCaveatInfo partial_caveat_info = 3;
 }
 
+// ImportBulkRelationships
+message ImportBulkRelationshipsRequest {
+  repeated Relationship relationships = 1;
+}
+
+message ImportBulkRelationshipsResponse {
+  uint64 num_loaded = 1;
+}
+
+// ExportBulkRelationships
+message ExportBulkRelationshipsRequest {
+  Consistency consistency = 1;
+  uint32 optional_limit = 2;
+  Cursor optional_cursor = 3;
+  RelationshipFilter optional_relationship_filter = 4;
+}
+
+message ExportBulkRelationshipsResponse {
+  Cursor after_result_cursor = 1;
+  repeated Relationship relationships = 2;
+}

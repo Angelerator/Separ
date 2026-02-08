@@ -173,8 +173,8 @@ pub mod proto {
         #[repr(i32)]
         pub enum Operation {
             Unspecified = 0,
-            Touch = 1,
-            Create = 2,
+            Create = 1,
+            Touch = 2,
             Delete = 3,
         }
     }
@@ -206,11 +206,11 @@ pub mod proto {
         #[prost(string, tag = "2")]
         pub optional_resource_id: String,
         #[prost(string, tag = "3")]
-        pub optional_resource_id_prefix: String,
-        #[prost(string, tag = "4")]
         pub optional_relation: String,
-        #[prost(message, optional, tag = "5")]
+        #[prost(message, optional, tag = "4")]
         pub optional_subject_filter: Option<SubjectFilter>,
+        #[prost(string, tag = "5")]
+        pub optional_resource_id_prefix: String,
     }
 
     #[derive(Clone, PartialEq, ::prost::Message)]

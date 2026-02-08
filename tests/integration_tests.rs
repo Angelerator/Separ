@@ -641,4 +641,3 @@ mod workspace_first_model {
         println!("  Email2: {}", email_upper);
     }
 }
-

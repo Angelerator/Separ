@@ -23,4 +23,5 @@ tracing-subscriber = { workspace = true }
 dotenvy = { workspace = true }
 config = { workspace = true }
 serde = { workspace = true }
+hex = { workspace = true }
 anyhow = "1"

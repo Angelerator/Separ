@@ -239,7 +239,7 @@ impl SpiceDbClient {
         let request = self
             .create_request(proto::WriteRelationshipsRequest {
                 updates: vec![proto::RelationshipUpdate {
-                    operation: 1, // OPERATION_TOUCH
+                    operation: 2, // OPERATION_TOUCH
                     relationship: Some(proto::Relationship {
                         resource: Some(proto::ObjectReference {
                             object_type: resource_type.to_string(),
@@ -294,7 +294,7 @@ impl SpiceDbClient {
         let request = self
             .create_request(proto::WriteRelationshipsRequest {
                 updates: vec![proto::RelationshipUpdate {
-                    operation: 2, // OPERATION_DELETE
+                    operation: 3, // OPERATION_DELETE
                     relationship: Some(proto::Relationship {
                         resource: Some(proto::ObjectReference {
                             object_type: resource_type.to_string(),

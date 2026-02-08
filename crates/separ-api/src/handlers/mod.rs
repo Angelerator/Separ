@@ -4,6 +4,8 @@ pub mod auth;
 pub mod authz;
 pub mod health;
 pub mod identity;
+pub mod permissions;
+pub mod storage_connections;
 pub mod tenants;
 pub mod users;
 pub mod workspaces;

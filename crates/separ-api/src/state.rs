@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use separ_db::repositories::{
     ApiKey, PgApiKeyRepository, PgApplicationRepository, PgAuditRepository, PgGroupRepository,
-    PgOAuthProviderRepository, PgSyncConfigRepository, PgTenantRepository, PgUserRepository,
-    PgWorkspaceRepository,
+    PgOAuthProviderRepository, PgStorageConnectionRepository, PgSyncConfigRepository,
+    PgTenantRepository, PgUserRepository, PgWorkspaceRepository,
 };
 use separ_oauth::JwtService;
 use separ_spicedb::{
@@ -39,6 +39,16 @@ pub struct ApiKeyRateLimitEntry {
     pub limit_per_minute: i32,
 }
 
+/// Azure SSO configuration (passed from server config)
+/// In multi-tenant mode, per-customer Azure tenant IDs live in `identity_providers` DB table.
+/// `app_client_id` is the single multi-tenant app registration's client ID.
+#[derive(Clone, Debug)]
+pub struct AzureSsoConfig {
+    pub enabled: bool,
+    /// The app registration's client ID (same for all tenants — multi-tenant app)
+    pub app_client_id: String,
+}
+
 /// Concrete application state with all services
 #[derive(Clone)]
 pub struct AppState {
@@ -57,7 +67,12 @@ pub struct AppState {
     pub sync_repo: Arc<PgSyncConfigRepository>,
     pub audit_repo: Arc<PgAuditRepository>,
     pub api_key_repo: Arc<PgApiKeyRepository>,
+    pub storage_connection_repo: Arc<PgStorageConnectionRepository>,
     pub jwt_service: Arc<JwtService>,
+    /// Azure SSO configuration
+    pub azure_sso: AzureSsoConfig,
+    /// Per-tenant JWKS cache: keyed by Azure tenant ID → (kid → RSA components)
+    pub jwks_cache: crate::handlers::auth::PerTenantJwksCache,
     /// API key validation cache (key_hash -> ApiKey)
     pub api_key_cache: Cache<String, ApiKey>,
     /// Global rate limiter by IP
@@ -65,15 +80,26 @@ pub struct AppState {
     /// Per-API-key rate limiters (api_key_id -> limiter)
     /// Each API key can have its own rate limit defined in the database
     pub api_key_rate_limiters: Cache<Uuid, ApiKeyRateLimitEntry>,
+    /// Encryption key for storage connection credentials
+    encryption_key: Vec<u8>,
 }
 
 impl AppState {
     /// Create new application state from components
+    ///
+    /// # Arguments
+    /// * `db_pool` - Database connection pool
+    /// * `spicedb_client` - SpiceDB client for authorization
+    /// * `auth_service` - Authorization service
+    /// * `jwt_service` - JWT token service
+    /// * `encryption_key` - 32-byte key for encrypting storage connection credentials
     pub fn new(
         db_pool: PgPool,
         spicedb_client: SpiceDbClient,
         auth_service: SpiceDbAuthorizationService,
         jwt_service: JwtService,
+        encryption_key: Vec<u8>,
+        azure_sso: AzureSsoConfig,
     ) -> Self {
         // Create cached SpiceDB client with default config
         let cached_spicedb =
@@ -106,14 +132,23 @@ impl AppState {
             sync_repo: Arc::new(PgSyncConfigRepository::new(db_pool.clone())),
             audit_repo: Arc::new(PgAuditRepository::new(db_pool.clone())),
             api_key_repo: Arc::new(PgApiKeyRepository::new(db_pool.clone())),
+            storage_connection_repo: Arc::new(PgStorageConnectionRepository::new(
+                db_pool.clone(),
+                encryption_key.clone(),
+            )),
             db_pool,
             spicedb_client: Arc::new(spicedb_client),
             cached_spicedb: Arc::new(cached_spicedb),
             auth_service: Arc::new(auth_service),
             jwt_service: Arc::new(jwt_service),
+            azure_sso,
+            jwks_cache: std::sync::Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
             api_key_cache,
             rate_limiter,
             api_key_rate_limiters,
+            encryption_key,
         }
     }
 

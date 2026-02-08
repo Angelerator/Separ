@@ -3,6 +3,9 @@ package authzed.api.v1;
 
 option go_package = "github.com/authzed/authzed-go/proto/authzed/api/v1";
 
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
 // ObjectReference is used to refer to a specific object in the system.
 message ObjectReference {
   string object_type = 1;
@@ -21,32 +24,13 @@ message Relationship {
   string relation = 2;
   SubjectReference subject = 3;
   ContextualizedCaveat optional_caveat = 4;
+  google.protobuf.Timestamp optional_expires_at = 5;
 }
 
 // ContextualizedCaveat provides a caveat and its context.
 message ContextualizedCaveat {
   string caveat_name = 1;
   google.protobuf.Struct context = 2;
-}
-
-// RelationshipFilter is used to filter relationships.
-message RelationshipFilter {
-  string resource_type = 1;
-  string optional_resource_id = 2;
-  string optional_relation = 3;
-  SubjectFilter optional_subject_filter = 4;
-}
-
-// SubjectFilter is used to filter subjects in relationship queries.
-message SubjectFilter {
-  string subject_type = 1;
-  string optional_subject_id = 2;
-  RelationFilter optional_relation = 3;
-}
-
-// RelationFilter is used to filter by relation name.
-message RelationFilter {
-  string relation = 1;
 }
 
 // ZedToken is used for consistency tokens.
@@ -59,5 +43,46 @@ message Cursor {
   string token = 1;
 }
 
-import "google/protobuf/struct.proto";
+// RelationshipUpdate is used for mutating a single relationship.
+message RelationshipUpdate {
+  enum Operation {
+    OPERATION_UNSPECIFIED = 0;
+    OPERATION_CREATE = 1;
+    OPERATION_TOUCH = 2;
+    OPERATION_DELETE = 3;
+  }
+  Operation operation = 1;
+  Relationship relationship = 2;
+}
 
+// PermissionRelationshipTree is used for representing a tree of permissions.
+message PermissionRelationshipTree {
+  oneof tree_type {
+    AlgebraicSubjectSet intermediate = 1;
+    DirectSubjectSet leaf = 2;
+  }
+  ObjectReference expanded_object = 3;
+  string expanded_relation = 4;
+}
+
+// AlgebraicSubjectSet is a subject set computed by applying an operation.
+message AlgebraicSubjectSet {
+  enum Operation {
+    OPERATION_UNSPECIFIED = 0;
+    OPERATION_UNION = 1;
+    OPERATION_INTERSECTION = 2;
+    OPERATION_EXCLUSION = 3;
+  }
+  Operation operation = 1;
+  repeated PermissionRelationshipTree children = 2;
+}
+
+// DirectSubjectSet is a collection of subjects.
+message DirectSubjectSet {
+  repeated SubjectReference subjects = 1;
+}
+
+// PartialCaveatInfo carries information for partially evaluated caveats.
+message PartialCaveatInfo {
+  repeated string missing_required_context = 1;
+}
