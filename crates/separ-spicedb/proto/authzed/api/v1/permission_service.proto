@@ -299,9 +299,7 @@ message ExportBulkRelationshipsRequest {
   uint32 optional_limit = 2;
   Cursor optional_cursor = 3;
   RelationshipFilter optional_relationship_filter = 4;
-}
-
-message ExportBulkRelationshipsResponse {
+}message ExportBulkRelationshipsResponse {
   Cursor after_result_cursor = 1;
   repeated Relationship relationships = 2;
 }

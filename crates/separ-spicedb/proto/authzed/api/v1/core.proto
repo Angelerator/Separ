@@ -80,9 +80,7 @@ message AlgebraicSubjectSet {
 // DirectSubjectSet is a collection of subjects.
 message DirectSubjectSet {
   repeated SubjectReference subjects = 1;
-}
-
-// PartialCaveatInfo carries information for partially evaluated caveats.
+}// PartialCaveatInfo carries information for partially evaluated caveats.
 message PartialCaveatInfo {
   repeated string missing_required_context = 1;
 }
