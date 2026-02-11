@@ -3,7 +3,7 @@
 //! Types for managing cloud storage connections (Azure ADLS, S3, GCS)
 //! with encrypted credentials and multiple authentication methods.
 
-use crate::ids::{TenantId, UserId};
+use crate::ids::{TenantId, UserId, WorkspaceId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -167,7 +167,8 @@ impl fmt::Display for StorageConnectionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConnection {
     pub id: StorageConnectionId,
-    pub tenant_id: TenantId,
+    pub tenant_id: Option<TenantId>,
+    pub workspace_id: Option<WorkspaceId>,
     pub name: String,
     pub description: Option<String>,
     pub storage_type: StorageType,
@@ -231,6 +232,7 @@ pub struct CreateStorageConnectionRequest {
     pub name: String,
     pub description: Option<String>,
     pub storage_type: StorageType,
+    pub workspace_id: Option<WorkspaceId>,
 
     // Azure
     pub azure_account_name: Option<String>,
@@ -301,7 +303,7 @@ pub trait StorageConnectionRepository: Send + Sync {
     /// Create a new storage connection
     async fn create(
         &self,
-        tenant_id: TenantId,
+        tenant_id: Option<TenantId>,
         created_by: UserId,
         request: &CreateStorageConnectionRequest,
     ) -> crate::Result<StorageConnection>;
@@ -319,6 +321,14 @@ pub trait StorageConnectionRepository: Send + Sync {
     async fn list_by_tenant(
         &self,
         tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> crate::Result<Vec<StorageConnection>>;
+
+    /// List storage connections for a workspace
+    async fn list_by_workspace(
+        &self,
+        workspace_id: WorkspaceId,
         offset: u32,
         limit: u32,
     ) -> crate::Result<Vec<StorageConnection>>;

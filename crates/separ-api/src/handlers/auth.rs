@@ -40,6 +40,8 @@ pub struct ValidateResponse {
     pub principal_type: String,
     /// Tenant ID
     pub tenant_id: String,
+    /// Workspace ID
+    pub workspace_id: String,
     /// Tenant name (optional)
     pub tenant_name: Option<String>,
     /// Display name
@@ -171,6 +173,7 @@ async fn validate_jwt(
         .or(request.tenant_hint.as_deref())
         .unwrap_or("default")
         .to_string();
+    let workspace_id = claims["workspace_id"].as_str().unwrap_or("").to_string();
     let exp = claims["exp"].as_i64();
 
     // Check expiration
@@ -196,6 +199,7 @@ async fn validate_jwt(
             .unwrap_or("user")
             .to_string(),
         tenant_id,
+        workspace_id,
         tenant_name: claims["tenant_name"].as_str().map(String::from),
         display_name: claims["name"].as_str().map(String::from),
         email: claims["email"].as_str().map(String::from),
@@ -251,6 +255,7 @@ async fn validate_personal_access_token(
         user_id: request.username.clone(),
         principal_type: "user".to_string(),
         tenant_id,
+        workspace_id: String::new(),
         tenant_name: None,
         display_name: Some(request.username.clone()),
         email: None,
@@ -292,6 +297,7 @@ async fn validate_service_account_key(
         user_id: request.username.clone(),
         principal_type: "service_account".to_string(),
         tenant_id,
+        workspace_id: String::new(),
         tenant_name: None,
         display_name: Some(format!("Service: {}", request.username)),
         email: None,
@@ -333,6 +339,7 @@ async fn validate_api_key(
         user_id: request.username.clone(),
         principal_type: "api_key".to_string(),
         tenant_id,
+        workspace_id: String::new(),
         tenant_name: None,
         display_name: None,
         email: None,
@@ -394,6 +401,16 @@ async fn validate_password(
         if crate::password::verify_password(password, &password_hash) {
             info!(username = %username, user_id = %user_id, "Password verified successfully");
 
+            // Find user's default workspace (personal workspace first, then any)
+            let workspace_id: String = sqlx::query_scalar(
+                "SELECT w.id::text FROM workspaces w JOIN workspace_members wm ON w.id = wm.workspace_id WHERE wm.user_id = $1::uuid ORDER BY CASE WHEN w.workspace_type = 'personal' THEN 0 ELSE 1 END, wm.joined_at ASC LIMIT 1"
+            )
+            .bind(uuid::Uuid::parse_str(&user_id).unwrap_or_default())
+            .fetch_optional(&state.db_pool)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_default();
+
             // Get user's roles from SpiceDB
             let has_platform_access = state
                 .auth_service
@@ -417,6 +434,7 @@ async fn validate_password(
                 user_id,
                 principal_type: "user".to_string(),
                 tenant_id,
+                workspace_id,
                 tenant_name: None,
                 display_name: Some(username.clone()),
                 email: Some(username.clone()),
@@ -582,6 +600,7 @@ pub async fn validate_token(
         .as_str()
         .unwrap_or("default")
         .to_string();
+    let workspace_id = claims["workspace_id"].as_str().unwrap_or("").to_string();
     let exp = claims["exp"].as_i64();
 
     // Check expiration
@@ -605,6 +624,7 @@ pub async fn validate_token(
             .unwrap_or("user")
             .to_string(),
         tenant_id,
+        workspace_id,
         tenant_name: claims["tenant_name"].as_str().map(String::from),
         display_name: claims["name"].as_str().map(String::from),
         email: claims["email"].as_str().map(String::from),
@@ -676,6 +696,8 @@ pub struct TokenResponse {
     pub user_id: String,
     /// Tenant ID
     pub tenant_id: String,
+    /// Workspace ID
+    pub workspace_id: String,
 }
 
 /// Issue JWT tokens after password validation or Azure SSO
@@ -736,11 +758,22 @@ async fn issue_token_password(
 
     let validated = validate_password_internal(state, &validate_req).await?;
 
+    // Find user's default workspace (personal workspace first, then any)
+    let workspace_id: String = sqlx::query_scalar(
+        "SELECT w.id::text FROM workspaces w JOIN workspace_members wm ON w.id = wm.workspace_id WHERE wm.user_id = $1::uuid ORDER BY CASE WHEN w.workspace_type = 'personal' THEN 0 ELSE 1 END, wm.joined_at ASC LIMIT 1"
+    )
+    .bind(uuid::Uuid::parse_str(&validated.user_id).unwrap_or_default())
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None)
+    .unwrap_or_default();
+
     let tokens = state
         .jwt_service
         .generate_tokens(
             &validated.user_id,
             &validated.tenant_id,
+            &workspace_id,
             validated.email.as_deref(),
             validated.display_name.as_deref(),
             validated.groups.clone(),
@@ -770,6 +803,7 @@ async fn issue_token_password(
         expires_in: tokens.expires_in,
         user_id: validated.user_id,
         tenant_id: validated.tenant_id,
+        workspace_id,
     }))
 }
 
@@ -1243,6 +1277,17 @@ async fn issue_token_azure_sso(
     // =========================================================================
     // Step 3: Issue Separ JWT tokens
     // =========================================================================
+
+    // Find user's default workspace (personal workspace first, then any)
+    let workspace_id: String = sqlx::query_scalar(
+        "SELECT w.id::text FROM workspaces w JOIN workspace_members wm ON w.id = wm.workspace_id WHERE wm.user_id = $1::uuid ORDER BY CASE WHEN w.workspace_type = 'personal' THEN 0 ELSE 1 END, wm.joined_at ASC LIMIT 1"
+    )
+    .bind(uuid::Uuid::parse_str(&user_id).unwrap_or_default())
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None)
+    .unwrap_or_default();
+
     let has_platform_access = state.auth_service.client()
         .check_permission("platform", "main", "admin", "user", &user_id)
         .await.unwrap_or(false);
@@ -1255,7 +1300,7 @@ async fn issue_token_azure_sso(
     let groups = if has_platform_access { vec!["admins".to_string()] } else { vec![] };
 
     let tokens = state.jwt_service.generate_tokens(
-        &user_id, &tenant_id, Some(&azure_email),
+        &user_id, &tenant_id, &workspace_id, Some(&azure_email),
         if azure_name.is_empty() { None } else { Some(&azure_name) },
         groups, permissions,
     ).map_err(|e| {
@@ -1274,6 +1319,7 @@ async fn issue_token_azure_sso(
         expires_in: tokens.expires_in,
         user_id,
         tenant_id,
+        workspace_id,
     }))
 }
 
@@ -1468,6 +1514,16 @@ async fn validate_password_internal(
         if crate::password::verify_password(password, &password_hash) {
             info!(username = %username, user_id = %user_id, "Password verified for token issuance");
 
+            // Find user's default workspace (personal workspace first, then any)
+            let workspace_id: String = sqlx::query_scalar(
+                "SELECT w.id::text FROM workspaces w JOIN workspace_members wm ON w.id = wm.workspace_id WHERE wm.user_id = $1::uuid ORDER BY CASE WHEN w.workspace_type = 'personal' THEN 0 ELSE 1 END, wm.joined_at ASC LIMIT 1"
+            )
+            .bind(uuid::Uuid::parse_str(&user_id).unwrap_or_default())
+            .fetch_optional(&state.db_pool)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_default();
+
             let has_platform_access = state
                 .auth_service
                 .client()
@@ -1490,6 +1546,7 @@ async fn validate_password_internal(
                 user_id,
                 principal_type: "user".to_string(),
                 tenant_id,
+                workspace_id,
                 tenant_name: None,
                 display_name: Some(username.clone()),
                 email: Some(username.clone()),
@@ -1833,8 +1890,8 @@ mod tests {
         let request: TokenRequest = serde_json::from_str(json).unwrap();
 
         assert_eq!(request.grant_type, "password");
-        assert_eq!(request.username, "test@example.com");
-        assert_eq!(request.password, "secret123");
+        assert_eq!(request.username, Some("test@example.com".to_string()));
+        assert_eq!(request.password, Some("secret123".to_string()));
         assert!(request.tenant_hint.is_none());
     }
 
@@ -1861,6 +1918,7 @@ mod tests {
             expires_in: 3600,
             user_id: "user_123".to_string(),
             tenant_id: "tenant_456".to_string(),
+            workspace_id: "workspace_789".to_string(),
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1871,5 +1929,6 @@ mod tests {
         assert!(json.contains("3600"));
         assert!(json.contains("user_123"));
         assert!(json.contains("tenant_456"));
+        assert!(json.contains("workspace_789"));
     }
 }

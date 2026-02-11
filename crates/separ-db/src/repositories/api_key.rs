@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use separ_core::{
     ApiKeyId, CreateApiKeyRequest, CreateApiKeyResponse, Result, SeparError, ServiceAccountId,
-    TenantId, UserId,
+    TenantId, UserId, WorkspaceId,
 };
 
 /// Extended API Key for the repository (includes all fields)
@@ -27,6 +27,7 @@ pub struct ApiKey {
     pub service_account_id: Option<ServiceAccountId>,
     pub created_by: Option<UserId>,
     pub tenant_id: Option<TenantId>,
+    pub workspace_id: Option<WorkspaceId>,
     pub scopes: Vec<String>,
     pub rate_limit_per_minute: i32,
     pub expires_at: Option<DateTime<Utc>>,
@@ -66,6 +67,7 @@ pub trait ApiKeyRepository: Send + Sync {
         request: CreateApiKeyRequest,
         created_by: Option<UserId>,
         tenant_id: Option<TenantId>,
+        workspace_id: Option<WorkspaceId>,
     ) -> Result<CreateApiKeyResponse>;
 
     /// Validate an API key and return the key info if valid
@@ -78,6 +80,14 @@ pub trait ApiKeyRepository: Send + Sync {
     async fn list_by_tenant(
         &self,
         tenant_id: TenantId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<ApiKey>>;
+
+    /// List API keys by workspace
+    async fn list_by_workspace(
+        &self,
+        workspace_id: WorkspaceId,
         offset: u32,
         limit: u32,
     ) -> Result<Vec<ApiKey>>;
@@ -165,6 +175,10 @@ impl PgApiKeyRepository {
                 .try_get::<Option<Uuid>, _>("tenant_id")
                 .map_err(|e| SeparError::database_error(e.to_string()))?
                 .map(TenantId::from_uuid),
+            workspace_id: row
+                .try_get::<Option<Uuid>, _>("workspace_id")
+                .unwrap_or(None)
+                .map(WorkspaceId::from_uuid),
             scopes: row.try_get::<Vec<String>, _>("scopes").unwrap_or_default(),
             rate_limit_per_minute: row
                 .try_get::<Option<i32>, _>("rate_limit_per_minute")
@@ -200,6 +214,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
         request: CreateApiKeyRequest,
         created_by: Option<UserId>,
         tenant_id: Option<TenantId>,
+        workspace_id: Option<WorkspaceId>,
     ) -> Result<CreateApiKeyResponse> {
         let id = ApiKeyId::new();
         let key = Self::generate_key();
@@ -216,10 +231,10 @@ impl ApiKeyRepository for PgApiKeyRepository {
             r#"
             INSERT INTO api_keys (
                 id, key_prefix, key_hash, name, description,
-                service_account_id, created_by, tenant_id,
+                service_account_id, created_by, tenant_id, workspace_id,
                 scopes, rate_limit_per_minute, expires_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             "#,
         )
         .bind(id.as_uuid())
@@ -230,6 +245,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
         .bind(request.service_account_id.map(|id| *id.as_uuid()))
         .bind(created_by.map(|id| *id.as_uuid()))
         .bind(tenant_id.map(|id| *id.as_uuid()))
+        .bind(workspace_id.map(|id| *id.as_uuid()))
         .bind(&request.scopes)
         .bind(rate_limit)
         .bind(expires_at)
@@ -256,7 +272,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
             r#"
             SELECT 
                 id, key_prefix, key_hash, name, description,
-                service_account_id, created_by, tenant_id,
+                service_account_id, created_by, tenant_id, workspace_id,
                 scopes, rate_limit_per_minute, expires_at,
                 last_used_at, revoked_at, revoked_by,
                 created_at, updated_at
@@ -289,7 +305,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
             r#"
             SELECT 
                 id, key_prefix, key_hash, name, description,
-                service_account_id, created_by, tenant_id,
+                service_account_id, created_by, tenant_id, workspace_id,
                 scopes, rate_limit_per_minute, expires_at,
                 last_used_at, revoked_at, revoked_by,
                 created_at, updated_at
@@ -318,7 +334,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
             r#"
             SELECT 
                 id, key_prefix, key_hash, name, description,
-                service_account_id, created_by, tenant_id,
+                service_account_id, created_by, tenant_id, workspace_id,
                 scopes, rate_limit_per_minute, expires_at,
                 last_used_at, revoked_at, revoked_by,
                 created_at, updated_at
@@ -338,6 +354,36 @@ impl ApiKeyRepository for PgApiKeyRepository {
         rows.iter().map(Self::row_to_api_key).collect()
     }
 
+    async fn list_by_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<ApiKey>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT 
+                id, key_prefix, key_hash, name, description,
+                service_account_id, created_by, tenant_id, workspace_id,
+                scopes, rate_limit_per_minute, expires_at,
+                last_used_at, revoked_at, revoked_by,
+                created_at, updated_at
+            FROM api_keys
+            WHERE workspace_id = $1
+            ORDER BY created_at DESC
+            OFFSET $2 LIMIT $3
+            "#,
+        )
+        .bind(workspace_id.as_uuid())
+        .bind(offset as i64)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| SeparError::database_error(e.to_string()))?;
+
+        rows.iter().map(Self::row_to_api_key).collect()
+    }
+
     async fn list_by_service_account(
         &self,
         service_account_id: ServiceAccountId,
@@ -346,7 +392,7 @@ impl ApiKeyRepository for PgApiKeyRepository {
             r#"
             SELECT 
                 id, key_prefix, key_hash, name, description,
-                service_account_id, created_by, tenant_id,
+                service_account_id, created_by, tenant_id, workspace_id,
                 scopes, rate_limit_per_minute, expires_at,
                 last_used_at, revoked_at, revoked_by,
                 created_at, updated_at

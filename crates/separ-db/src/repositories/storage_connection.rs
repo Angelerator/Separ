@@ -9,7 +9,7 @@ use separ_core::{
     AzureAuthMethod, CreateStorageConnectionRequest, Result, SeparError, StorageConnection,
     StorageConnectionId, StorageConnectionRepository, StorageConnectionStatus,
     StorageConnectionWithCredentials, StorageType, TenantId, UpdateStorageConnectionRequest,
-    UserId,
+    UserId, WorkspaceId,
 };
 
 /// PostgreSQL implementation of StorageConnectionRepository
@@ -91,7 +91,7 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
     #[instrument(skip(self, request))]
     async fn create(
         &self,
-        tenant_id: TenantId,
+        tenant_id: Option<TenantId>,
         created_by: UserId,
         request: &CreateStorageConnectionRequest,
     ) -> Result<StorageConnection> {
@@ -130,7 +130,7 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
         sqlx::query(
             r#"
             INSERT INTO storage_connections (
-                id, tenant_id, name, description, storage_type,
+                id, tenant_id, workspace_id, name, description, storage_type,
                 azure_account_name, azure_container, azure_auth_method,
                 azure_tenant_id, azure_client_id, azure_client_secret_encrypted,
                 azure_access_key_encrypted, azure_sas_token_encrypted,
@@ -142,13 +142,14 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
-                'active', $24, $25, $26
+                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
+                'active', $25, $26, $27
             )
             "#,
         )
         .bind(id.as_uuid())
-        .bind(tenant_id.as_uuid())
+        .bind(tenant_id.as_ref().map(|t| *t.as_uuid()))
+        .bind(request.workspace_id.as_ref().map(|w| *w.as_uuid()))
         .bind(&request.name)
         .bind(&request.description)
         .bind(&storage_type_str)
@@ -180,6 +181,7 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
         Ok(StorageConnection {
             id,
             tenant_id,
+            workspace_id: request.workspace_id,
             name: request.name.clone(),
             description: request.description.clone(),
             storage_type: request.storage_type,
@@ -214,7 +216,7 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
     async fn get_by_id(&self, id: StorageConnectionId) -> Result<Option<StorageConnection>> {
         let row = sqlx::query_as::<_, StorageConnectionRow>(
             r#"
-            SELECT id, tenant_id, name, description, storage_type,
+            SELECT id, tenant_id, workspace_id, name, description, storage_type,
                    azure_account_name, azure_container, azure_auth_method,
                    azure_tenant_id, azure_client_id, azure_client_secret_encrypted,
                    azure_access_key_encrypted, azure_sas_token_encrypted,
@@ -293,7 +295,7 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
     ) -> Result<Vec<StorageConnection>> {
         let rows = sqlx::query_as::<_, StorageConnectionRow>(
             r#"
-            SELECT id, tenant_id, name, description, storage_type,
+            SELECT id, tenant_id, workspace_id, name, description, storage_type,
                    azure_account_name, azure_container, azure_auth_method,
                    azure_tenant_id, azure_client_id, azure_client_secret_encrypted,
                    azure_access_key_encrypted, azure_sas_token_encrypted,
@@ -320,6 +322,41 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
     }
 
     #[instrument(skip(self))]
+    async fn list_by_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<StorageConnection>> {
+        let rows = sqlx::query_as::<_, StorageConnectionRow>(
+            r#"
+            SELECT id, tenant_id, workspace_id, name, description, storage_type,
+                   azure_account_name, azure_container, azure_auth_method,
+                   azure_tenant_id, azure_client_id, azure_client_secret_encrypted,
+                   azure_access_key_encrypted, azure_sas_token_encrypted,
+                   azure_managed_identity_client_id,
+                   s3_bucket, s3_region, s3_access_key_id, 
+                   s3_secret_access_key_encrypted, s3_endpoint_url,
+                   gcs_bucket, gcs_project_id, gcs_service_account_key_encrypted,
+                   key_prefix, status, last_tested_at, last_error,
+                   created_by, created_at, updated_at
+            FROM storage_connections
+            WHERE workspace_id = $1
+            ORDER BY name
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(workspace_id.as_uuid())
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| SeparError::database_error(e.to_string()))?;
+
+        Ok(rows.into_iter().map(|r| r.into_model()).collect())
+    }
+
+    #[instrument(skip(self))]
     async fn find_by_storage_location(
         &self,
         tenant_id: TenantId,
@@ -329,7 +366,7 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
     ) -> Result<Option<StorageConnection>> {
         let row = sqlx::query_as::<_, StorageConnectionRow>(
             r#"
-            SELECT id, tenant_id, name, description, storage_type,
+            SELECT id, tenant_id, workspace_id, name, description, storage_type,
                    azure_account_name, azure_container, azure_auth_method,
                    azure_tenant_id, azure_client_id, azure_client_secret_encrypted,
                    azure_access_key_encrypted, azure_sas_token_encrypted,
@@ -552,7 +589,8 @@ impl StorageConnectionRepository for PgStorageConnectionRepository {
 #[derive(Debug, sqlx::FromRow)]
 struct StorageConnectionRow {
     id: uuid::Uuid,
-    tenant_id: uuid::Uuid,
+    tenant_id: Option<uuid::Uuid>,
+    workspace_id: Option<uuid::Uuid>,
     name: String,
     description: Option<String>,
     storage_type: String,
@@ -586,7 +624,8 @@ impl StorageConnectionRow {
     fn into_model(self) -> StorageConnection {
         StorageConnection {
             id: StorageConnectionId::from_uuid(self.id),
-            tenant_id: TenantId::from_uuid(self.tenant_id),
+            tenant_id: self.tenant_id.map(TenantId::from_uuid),
+            workspace_id: self.workspace_id.map(WorkspaceId::from_uuid),
             name: self.name,
             description: self.description,
             storage_type: self.storage_type.parse().unwrap_or(StorageType::Adls),

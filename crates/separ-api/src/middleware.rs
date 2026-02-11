@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use separ_core::{ApiKeyId, TenantId, UserId};
+use separ_core::{ApiKeyId, TenantId, UserId, WorkspaceId};
 use separ_db::repositories::ApiKeyRepository;
 use separ_oauth::JwtService;
 
@@ -36,6 +36,7 @@ use crate::state::AppState;
 pub struct AuthContext {
     pub user_id: UserId,
     pub tenant_id: Option<TenantId>,
+    pub workspace_id: Option<WorkspaceId>,
     pub email: Option<String>,
     pub name: Option<String>,
     pub scopes: Vec<String>,
@@ -432,6 +433,7 @@ pub async fn require_service_api_key(
             let auth_context = AuthContext {
                 user_id: cached_key.created_by.unwrap_or_else(UserId::new),
                 tenant_id: cached_key.tenant_id,
+                workspace_id: cached_key.workspace_id,
                 email: None,
                 name: Some(cached_key.name.clone()),
                 scopes: cached_key.scopes.clone(),
@@ -466,6 +468,7 @@ pub async fn require_service_api_key(
             let auth_context = AuthContext {
                 user_id: api_key.created_by.unwrap_or_else(UserId::new),
                 tenant_id: api_key.tenant_id,
+                workspace_id: api_key.workspace_id,
                 email: None,
                 name: Some(api_key.name.clone()),
                 scopes: api_key.scopes.clone(),
@@ -532,6 +535,7 @@ pub async fn require_api_key(
             let auth_context = AuthContext {
                 user_id: UserId::new(), // System user
                 tenant_id: None,
+                workspace_id: None,
                 email: None,
                 name: Some("Admin".to_string()),
                 scopes: vec!["*".to_string()], // Full access
@@ -606,10 +610,12 @@ pub async fn auth_middleware(
     })?;
 
     let tenant_id: Option<TenantId> = claims.tenant_id.parse().ok();
+    let workspace_id: Option<WorkspaceId> = claims.workspace_id.parse().ok();
 
     let auth_context = AuthContext {
         user_id,
         tenant_id,
+        workspace_id,
         email: claims.email,
         name: claims.name,
         scopes: claims.scopes,

@@ -75,9 +75,7 @@ message AlgebraicSubjectSet {
   }
   Operation operation = 1;
   repeated PermissionRelationshipTree children = 2;
-}
-
-// DirectSubjectSet is a collection of subjects.
+}// DirectSubjectSet is a collection of subjects.
 message DirectSubjectSet {
   repeated SubjectReference subjects = 1;
 }// PartialCaveatInfo carries information for partially evaluated caveats.

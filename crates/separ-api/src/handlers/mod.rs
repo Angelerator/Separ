@@ -2,7 +2,9 @@
 
 pub mod auth;
 pub mod authz;
+pub mod azure_sas;
 pub mod health;
+pub mod resource_grants;
 pub mod identity;
 pub mod permissions;
 pub mod storage_connections;

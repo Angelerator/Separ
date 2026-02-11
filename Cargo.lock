@@ -3197,6 +3197,7 @@ dependencies = [
  "chrono",
  "governor 0.7.0",
  "hex",
+ "hmac",
  "http 1.4.0",
  "jsonwebtoken",
  "moka",
@@ -3217,6 +3218,7 @@ dependencies = [
  "tower-http",
  "tower_governor",
  "tracing",
+ "urlencoding",
  "uuid",
 ]
 

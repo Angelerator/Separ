@@ -418,6 +418,8 @@ pub struct ApiKey {
     pub created_by: Option<UserId>,
     /// Tenant the key belongs to
     pub tenant_id: Option<TenantId>,
+    /// Workspace the key belongs to
+    pub workspace_id: Option<WorkspaceId>,
     /// Application this key belongs to (optional)
     pub application_id: Option<ApplicationId>,
     /// Permission scopes (least privilege)

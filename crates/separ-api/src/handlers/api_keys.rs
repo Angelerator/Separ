@@ -3,7 +3,7 @@
 //! Provides CRUD operations for API keys used in service-to-service authentication.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::{header, StatusCode},
     Json,
 };
@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use separ_core::{ApiKeyId, CreateApiKeyRequest, TenantId, UserId};
+use separ_core::{ApiKeyId, CreateApiKeyRequest, TenantId, UserId, WorkspaceId};
 use separ_db::repositories::ApiKeyRepository;
 
+use crate::middleware::AuthContext;
 use crate::state::AppState;
 
 /// API key response for listing (without sensitive data)
@@ -57,15 +58,22 @@ pub struct CreateApiKeyBody {
     pub expires_in_days: Option<i32>,
     #[serde(default)]
     pub rate_limit_per_minute: Option<i32>,
-    /// Tenant ID for the API key (required)
-    pub tenant_id: String,
+    /// Tenant ID for the API key (optional)
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    /// Workspace ID for the API key (required)
+    pub workspace_id: String,
 }
 
 /// Query parameters for listing API keys
 #[derive(Debug, Deserialize)]
 pub struct ListApiKeysQuery {
-    /// Tenant ID (required)
-    pub tenant_id: String,
+    /// Tenant ID (optional fallback)
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    /// Workspace ID (preferred)
+    #[serde(default)]
+    pub workspace_id: Option<String>,
     #[serde(default = "default_offset")]
     pub offset: u32,
     #[serde(default = "default_limit")]
@@ -108,21 +116,46 @@ pub async fn list_api_keys(
 ) -> Result<Json<Vec<ApiKeyDto>>, (StatusCode, Json<ErrorResponse>)> {
     debug!("Listing API keys, query: {:?}", query);
 
-    let tenant_id = TenantId::from_uuid(Uuid::parse_str(&query.tenant_id).map_err(|_| {
-        (
+    // Prefer workspace_id, fall back to tenant_id
+    let keys = if let Some(ref ws_id) = query.workspace_id {
+        let workspace_id = WorkspaceId::from_uuid(Uuid::parse_str(ws_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_workspace_id".to_string(),
+                    message: "Invalid workspace ID format".to_string(),
+                }),
+            )
+        })?);
+        state
+            .api_key_repo
+            .list_by_workspace(workspace_id, query.offset, query.limit)
+            .await
+    } else if let Some(ref t_id) = query.tenant_id {
+        let tenant_id = TenantId::from_uuid(Uuid::parse_str(t_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_tenant_id".to_string(),
+                    message: "Invalid tenant ID format".to_string(),
+                }),
+            )
+        })?);
+        state
+            .api_key_repo
+            .list_by_tenant(tenant_id, query.offset, query.limit)
+            .await
+    } else {
+        return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "invalid_tenant_id".to_string(),
-                message: "Invalid tenant ID format".to_string(),
+                error: "missing_scope".to_string(),
+                message: "workspace_id or tenant_id is required".to_string(),
             }),
-        )
-    })?);
+        ));
+    };
 
-    let keys = state
-        .api_key_repo
-        .list_by_tenant(tenant_id, query.offset, query.limit)
-        .await
-        .map_err(|e| {
+    let keys = keys.map_err(|e| {
             warn!("Failed to list API keys: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -157,7 +190,7 @@ pub async fn list_api_keys(
         })
         .collect();
 
-    info!("Listed {} API keys for tenant {}", dtos.len(), tenant_id);
+    info!("Listed {} API keys", dtos.len());
     Ok(Json(dtos))
 }
 
@@ -182,16 +215,23 @@ pub async fn create_api_key(
         ));
     }
 
-    // Parse tenant ID
-    let tenant_id = TenantId::from_uuid(Uuid::parse_str(&body.tenant_id).map_err(|_| {
+    // Parse workspace ID (required)
+    let workspace_id = WorkspaceId::from_uuid(Uuid::parse_str(&body.workspace_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "invalid_tenant_id".to_string(),
-                message: "Invalid tenant ID format".to_string(),
+                error: "invalid_workspace_id".to_string(),
+                message: "Invalid workspace ID format".to_string(),
             }),
         )
     })?);
+
+    // Parse tenant ID (optional)
+    let tenant_id = body
+        .tenant_id
+        .as_deref()
+        .and_then(|t| Uuid::parse_str(t).ok())
+        .map(TenantId::from_uuid);
 
     // Extract user ID from Authorization header (optional, for audit)
     let created_by = headers
@@ -217,7 +257,7 @@ pub async fn create_api_key(
 
     let response = state
         .api_key_repo
-        .create(request, created_by, Some(tenant_id))
+        .create(request, created_by, tenant_id, Some(workspace_id))
         .await
         .map_err(|e| {
             warn!("Failed to create API key: {}", e);
@@ -231,8 +271,8 @@ pub async fn create_api_key(
         })?;
 
     info!(
-        "Created API key {} for tenant {}",
-        response.id, tenant_id
+        "Created API key {} for workspace {}",
+        response.id, workspace_id
     );
 
     Ok((
@@ -255,6 +295,7 @@ pub async fn create_api_key(
 pub async fn get_api_key(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    auth_ctx: Option<Extension<AuthContext>>,
 ) -> Result<Json<ApiKeyDto>, (StatusCode, Json<ErrorResponse>)> {
     let key_id = ApiKeyId::from_uuid(Uuid::parse_str(&id).map_err(|_| {
         (
@@ -290,6 +331,24 @@ pub async fn get_api_key(
             )
         })?;
 
+    // Workspace isolation (defense in depth): if the auth context and the key
+    // both carry a workspace_id, they must match.
+    if let Some(Extension(ctx)) = &auth_ctx {
+        if let Some(ctx_wid) = ctx.workspace_id {
+            if let Some(key_wid) = key.workspace_id {
+                if ctx_wid != key_wid {
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        Json(ErrorResponse {
+                            error: "not_found".to_string(),
+                            message: "API key not found".to_string(),
+                        }),
+                    ));
+                }
+            }
+        }
+    }
+
     Ok(Json(ApiKeyDto {
         id: key.id.to_string(),
         key_prefix: key.key_prefix,
@@ -319,6 +378,7 @@ pub async fn revoke_api_key(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
+    auth_ctx: Option<Extension<AuthContext>>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let key_id = ApiKeyId::from_uuid(Uuid::parse_str(&id).map_err(|_| {
         (
@@ -354,6 +414,24 @@ pub async fn revoke_api_key(
                 }),
             )
         })?;
+
+    // Workspace isolation (defense in depth): if the auth context and the key
+    // both carry a workspace_id, they must match.
+    if let Some(Extension(ctx)) = &auth_ctx {
+        if let Some(ctx_wid) = ctx.workspace_id {
+            if let Some(key_wid) = key.workspace_id {
+                if ctx_wid != key_wid {
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        Json(ErrorResponse {
+                            error: "not_found".to_string(),
+                            message: "API key not found".to_string(),
+                        }),
+                    ));
+                }
+            }
+        }
+    }
 
     // Check if already revoked
     if key.revoked_at.is_some() {

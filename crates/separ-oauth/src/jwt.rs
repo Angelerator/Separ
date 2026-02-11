@@ -23,6 +23,9 @@ pub struct Claims {
     pub sub: String,
     /// Tenant ID
     pub tenant_id: String,
+    /// Workspace ID (active workspace context)
+    #[serde(default)]
+    pub workspace_id: String,
     /// Issuer
     pub iss: String,
     /// Audience - who this token is intended for
@@ -123,6 +126,7 @@ impl JwtService {
         &self,
         user_id: &str,
         tenant_id: &str,
+        workspace_id: &str,
         email: Option<&str>,
         name: Option<&str>,
         roles: Vec<String>,
@@ -138,6 +142,7 @@ impl JwtService {
         let access_claims = Claims {
             sub: user_id.to_string(),
             tenant_id: tenant_id.to_string(),
+            workspace_id: workspace_id.to_string(),
             iss: self.issuer.clone(),
             aud: self.audience.clone(),
             exp: (now + Duration::seconds(self.access_token_expiry_secs)).timestamp(),
@@ -165,6 +170,7 @@ impl JwtService {
         let refresh_claims = Claims {
             sub: user_id.to_string(),
             tenant_id: tenant_id.to_string(),
+            workspace_id: workspace_id.to_string(),
             iss: self.issuer.clone(),
             aud: self.audience.clone(),
             exp: (now + Duration::seconds(self.refresh_token_expiry_secs)).timestamp(),
@@ -254,6 +260,7 @@ impl JwtService {
         self.generate_tokens(
             &claims.sub,
             &claims.tenant_id,
+            &claims.workspace_id,
             claims.email.as_deref(),
             claims.name.as_deref(),
             claims.roles,
@@ -346,6 +353,7 @@ mod tests {
         let result = service.generate_tokens(
             "user_123",
             "tenant_456",
+            "workspace_789",
             Some("test@example.com"),
             Some("Test User"),
             vec!["admin".to_string()],
@@ -369,6 +377,7 @@ mod tests {
             .generate_tokens(
                 "user_123",
                 "tenant_456",
+                "workspace_789",
                 Some("test@example.com"),
                 Some("Test User"),
                 vec!["admin".to_string()],
@@ -380,6 +389,7 @@ mod tests {
 
         assert_eq!(claims.sub, "user_123");
         assert_eq!(claims.tenant_id, "tenant_456");
+        assert_eq!(claims.workspace_id, "workspace_789");
         assert_eq!(claims.email, Some("test@example.com".to_string()));
         assert_eq!(claims.name, Some("Test User".to_string()));
         assert_eq!(claims.token_type, "access");
@@ -412,7 +422,7 @@ mod tests {
         );
 
         let tokens = service1
-            .generate_tokens("user_123", "tenant_456", None, None, vec![], vec![])
+            .generate_tokens("user_123", "tenant_456", "ws_1", None, None, vec![], vec![])
             .unwrap();
 
         // Token from service1 should not validate with service2 (different issuer)
@@ -428,6 +438,7 @@ mod tests {
             .generate_tokens(
                 "user_123",
                 "tenant_456",
+                "workspace_789",
                 Some("test@example.com"),
                 Some("Test User"),
                 vec!["admin".to_string()],
@@ -447,6 +458,7 @@ mod tests {
         let claims = service.validate_token(&new_tokens.access_token).unwrap();
         assert_eq!(claims.sub, "user_123");
         assert_eq!(claims.tenant_id, "tenant_456");
+        assert_eq!(claims.workspace_id, "workspace_789");
     }
 
     #[test]
@@ -454,7 +466,7 @@ mod tests {
         let service = create_test_jwt_service();
 
         let tokens = service
-            .generate_tokens("user_123", "tenant_456", None, None, vec![], vec![])
+            .generate_tokens("user_123", "tenant_456", "ws_1", None, None, vec![], vec![])
             .unwrap();
 
         // Should not be able to refresh using an access token

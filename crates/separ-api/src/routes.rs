@@ -162,6 +162,8 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
             "/api/v1/storage-connections",
             protected_storage_connection_routes(state.clone()),
         )
+        // === RESOURCE GRANTS ROUTES (for managing path-level access control) ===
+        .nest("/api/v1/workspaces", grant_routes(state.clone()))
         // === AUTHENTICATED USER ROUTES ===
         // These are for authenticated users (x-user-id header from token validation)
         .nest("/api/v1/workspaces", workspace_routes())
@@ -307,11 +309,37 @@ fn workspace_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::workspaces::create_workspace))
         .route("/", get(handlers::workspaces::list_workspaces))
+        .route("/switch", post(handlers::workspaces::switch_workspace))
         .route("/{id}", get(handlers::workspaces::get_workspace))
         .route("/{id}", put(handlers::workspaces::update_workspace))
         .route("/{id}", delete(handlers::workspaces::delete_workspace))
         .route("/{id}/members", post(handlers::workspaces::invite_member))
         .route("/{id}/members", get(handlers::workspaces::list_members))
+        .route(
+            "/{id}/members/{user_id}",
+            delete(handlers::workspaces::remove_member),
+        )
+        .route(
+            "/{id}/members/{user_id}",
+            put(handlers::workspaces::update_member_role),
+        )
+        .route("/{id}/leave", post(handlers::workspaces::leave_workspace))
+        .route(
+            "/{id}/transfer-ownership",
+            post(handlers::workspaces::transfer_ownership),
+        )
+        .route(
+            "/{id}/invitations",
+            post(handlers::workspaces::invite_by_email),
+        )
+        .route(
+            "/{id}/invitations",
+            get(handlers::workspaces::list_invitations),
+        )
+        .route(
+            "/accept-invitation",
+            post(handlers::workspaces::accept_invitation),
+        )
 }
 
 // =============================================================================
@@ -388,7 +416,31 @@ fn protected_storage_connection_routes(state: AppState) -> Router<AppState> {
             "/{id}/credentials",
             get(handlers::storage_connections::get_storage_connection_credentials),
         )
+        // Vend temporary SAS credentials (preferred over raw credentials)
+        .route(
+            "/{id}/vend",
+            post(handlers::storage_connections::vend_credentials),
+        )
         .layer(middleware::from_fn_with_state(state, require_api_key))
+}
+
+/// Resource grant routes — for managing path-level access control
+/// Uses admin key auth (same as workspace management routes)
+fn grant_routes(_state: AppState) -> Router<AppState> {
+    Router::new()
+        .route(
+            "/{workspace_id}/grants",
+            post(handlers::resource_grants::create_grant),
+        )
+        .route(
+            "/{workspace_id}/grants",
+            get(handlers::resource_grants::list_grants),
+        )
+        .route(
+            "/{workspace_id}/grants/{grant_id}",
+            delete(handlers::resource_grants::delete_grant),
+        )
+        .layer(middleware::from_fn(require_admin_api_key))
 }
 
 // =============================================================================

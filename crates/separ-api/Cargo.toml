@@ -41,3 +41,8 @@ once_cell = "1"
 # Azure SSO token validation
 reqwest = { version = "0.12", features = ["json"] }
 jsonwebtoken = { workspace = true }
+
+# URL encoding for SAS tokens
+urlencoding = { workspace = true }
+# HMAC for SAS token signing
+hmac = { workspace = true }

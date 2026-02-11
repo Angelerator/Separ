@@ -90,12 +90,13 @@ definition user {
 
 definition group {
     relation tenant: tenant
+    relation workspace: workspace
     relation owner: user | service_account
     relation admin: user | service_account
     relation member: user | service_account | group#member
     
-    permission manage = owner + admin + tenant->manage_groups
-    permission view = owner + admin + member + tenant->view
+    permission manage = owner + admin + tenant->manage_groups + workspace->manage
+    permission view = owner + admin + member + tenant->view + workspace->view
     permission add_member = owner + admin
     permission remove_member = owner + admin
 }
@@ -147,29 +148,66 @@ definition sync_config {
     permission trigger = admin + tenant->manage
 }
 
+// =============================================================================
+// Data Catalog Access Control
+// =============================================================================
+// Follows the same patterns as Unity Catalog (privilege hierarchy),
+// Apache Polaris (catalog roles), and Lakekeeper (OpenFGA grants).
+//
+// Key design:
+// - catalog_path represents a path prefix in the data catalog
+// - Grants on a path apply to all resources under that path
+// - Workspace role provides a default permission level
+// - Per-path grants can elevate or restrict (via denied) access
+
+definition catalog_path {
+    // Structural relations
+    relation workspace: workspace
+    relation parent: catalog_path              // for path hierarchy inheritance
+    relation connection: storage_connection     // which connection backs this path
+    
+    // Direct per-user/group grants on this path
+    relation owner: user | service_account
+    relation admin: user | service_account | group#member
+    relation writer: user | service_account | group#member
+    relation reader: user | service_account | group#member
+    relation denied: user | service_account | group#member
+    
+    // Computed permissions (direct grants + workspace role inheritance)
+    permission manage = owner + admin + workspace->manage - denied
+    permission can_write = owner + admin + writer + workspace->manage + parent->can_write - denied
+    permission can_read = owner + admin + writer + reader + workspace->view + parent->can_read - denied
+    
+    // For SAS vending — determines the sp (signed permissions) field
+    permission vend_read = can_read - denied
+    permission vend_write = can_write - denied
+}
+
 definition yekta_resource {
-    relation tenant: tenant
+    relation workspace: workspace
+    relation catalog_path: catalog_path
     relation owner: user | service_account
     relation editor: user | service_account | group#member
     relation viewer: user | service_account | group#member
     
-    permission manage = owner + tenant->manage
-    permission write = owner + editor + tenant->manage
-    permission read = owner + editor + viewer + tenant->view
+    permission manage = owner + workspace->manage + catalog_path->manage
+    permission write = owner + editor + workspace->manage + catalog_path->can_write
+    permission read = owner + editor + viewer + workspace->view + catalog_path->can_read
 }
 
 definition storage_connection {
     relation tenant: tenant
+    relation workspace: workspace
     relation owner: user | service_account
     relation admin: user | service_account | group#member
     relation user: user | service_account | group#member
     
     // Manage: full control (create, update, delete)
-    permission manage = owner + admin + tenant->manage
+    permission manage = owner + admin + tenant->manage + workspace->manage
     // Use: can use this connection for data access
-    permission use = owner + admin + user + tenant->view
+    permission use = owner + admin + user + tenant->view + workspace->view
     // View: can see connection info (but not secrets)
-    permission view = owner + admin + user + tenant->view
+    permission view = owner + admin + user + tenant->view + workspace->view
     // Get credentials: retrieve decrypted secrets (for authorized services)
-    permission get_credentials = owner + admin + tenant->manage
+    permission get_credentials = owner + admin + tenant->manage + workspace->manage
 }

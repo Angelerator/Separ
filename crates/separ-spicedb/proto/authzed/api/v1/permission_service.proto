@@ -291,9 +291,7 @@ message ImportBulkRelationshipsRequest {
 
 message ImportBulkRelationshipsResponse {
   uint64 num_loaded = 1;
-}
-
-// ExportBulkRelationships
+}// ExportBulkRelationships
 message ExportBulkRelationshipsRequest {
   Consistency consistency = 1;
   uint32 optional_limit = 2;
